@@ -4,9 +4,7 @@
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_log.h"
-#include "AX_servo.h"
-#include "mks_servo.h"
-#include "emm42_servo.h"
+#include "motor_move.h"
 
 
 void app_main(void)
@@ -18,8 +16,6 @@ void app_main(void)
         .rts_pin = 5,
         .baudrate = 115200
     };
-
-    AX_servo_init(AX_conf);
 
     gpio_num_t emm42_step_pin[] = {18, 19};
     gpio_num_t emm42_dir_pin[] = {12, 14};
@@ -35,8 +31,6 @@ void app_main(void)
         .en_pin = emm42_en_pin
     };
 
-    emm42_servo_init(emm42_conf); 
-
     gpio_num_t mks_step_pin[] = {13};
     gpio_num_t mks_dir_pin[] = {15};
     gpio_num_t mks_en_pin[] = {25};
@@ -51,7 +45,7 @@ void app_main(void)
         .en_pin = mks_en_pin
     };
 
-    mks_servo_init(mks_conf);
+    motor_init(AX_conf, emm42_conf, mks_conf);
 
     while (1)
     {
