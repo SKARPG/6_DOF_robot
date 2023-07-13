@@ -43,7 +43,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include "spinlock.h"
-#include "soc/interrupt_core0_reg.h"
+#include "soc/interrupt_reg.h"
 #include "esp_macros.h"
 #include "esp_attr.h"
 #include "esp_cpu.h"
@@ -108,6 +108,7 @@ typedef uint32_t TickType_t;
 #define portSTACK_GROWTH                (-1)
 #define portTICK_PERIOD_MS              ((TickType_t) (1000 / configTICK_RATE_HZ))
 #define portBYTE_ALIGNMENT              16
+#define portTICK_TYPE_IS_ATOMIC         1
 #define portNOP() __asm volatile        (" nop ")
 
 
@@ -302,20 +303,6 @@ FORCE_INLINE_ATTR BaseType_t xPortGetCoreID(void)
  * - Maps to forward declared functions
  * ------------------------------------------------------------------------------------------------------------------ */
 
-// ----------------------- Memory --------------------------
-
-/**
- * @brief Task memory allocation macros
- *
- * @note Because the ROM routines don't necessarily handle a stack in external RAM correctly, we force the stack
- * memory to always be internal.
- * @note [refactor-todo] Update portable.h to match v10.4.3 to use new malloc prototypes
- */
-#define portTcbMemoryCaps               (MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)
-#define portStackMemoryCaps             (MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)
-#define pvPortMallocTcbMem(size)        pvPortMalloc(size)
-#define pvPortMallocStackMem(size)      pvPortMalloc(size)
-
 // --------------------- Interrupts ------------------------
 
 #define portDISABLE_INTERRUPTS()            portSET_INTERRUPT_MASK_FROM_ISR()
@@ -398,6 +385,27 @@ FORCE_INLINE_ATTR BaseType_t xPortGetCoreID(void)
 #define portALT_GET_RUN_TIME_COUNTER_VALUE(x)    do {x = (uint32_t)esp_timer_get_time();} while(0)
 #endif
 
+// --------------------- TCB Cleanup -----------------------
+
+#if CONFIG_FREERTOS_ENABLE_STATIC_TASK_CLEAN_UP
+/* If enabled, users must provide an implementation of vPortCleanUpTCB() */
+extern void vPortCleanUpTCB ( void *pxTCB );
+#define portCLEAN_UP_TCB( pxTCB )                   vPortCleanUpTCB( pxTCB )
+#endif /* CONFIG_FREERTOS_ENABLE_STATIC_TASK_CLEAN_UP */
+
+// -------------- Optimized Task Selection -----------------
+
+#if configUSE_PORT_OPTIMISED_TASK_SELECTION == 1
+/* Check the configuration. */
+#if( configMAX_PRIORITIES > 32 )
+#error configUSE_PORT_OPTIMISED_TASK_SELECTION can only be set to 1 when configMAX_PRIORITIES is less than or equal to 32.  It is very rare that a system requires more than 10 to 15 different priorities as tasks that share a priority will time slice.
+#endif
+
+/* Store/clear the ready priorities in a bit map. */
+#define portRECORD_READY_PRIORITY( uxPriority, uxReadyPriorities ) ( uxReadyPriorities ) |= ( 1UL << ( uxPriority ) )
+#define portRESET_READY_PRIORITY( uxPriority, uxReadyPriorities ) ( uxReadyPriorities ) &= ~( 1UL << ( uxPriority ) )
+#define portGET_HIGHEST_PRIORITY( uxTopPriority, uxReadyPriorities ) uxTopPriority = ( 31 - __builtin_clz( ( uxReadyPriorities ) ) )
+#endif /* configUSE_PORT_OPTIMISED_TASK_SELECTION */
 
 
 /* --------------------------------------------- Inline Implementations ------------------------------------------------
@@ -424,7 +432,7 @@ FORCE_INLINE_ATTR bool xPortCanYield(void)
 
 /* ------------------------------------------------------ Misc ---------------------------------------------------------
  * - Miscellaneous porting macros
- * - These are not port of the FreeRTOS porting interface, but are used by other FreeRTOS dependent components
+ * - These are not part of the FreeRTOS porting interface, but are used by other FreeRTOS dependent components
  * ------------------------------------------------------------------------------------------------------------------ */
 
 // -------------------- Heap Related -----------------------
@@ -432,7 +440,7 @@ FORCE_INLINE_ATTR bool xPortCanYield(void)
 /**
  * @brief Checks if a given piece of memory can be used to store a task's TCB
  *
- * - Defined in port_common.c
+ * - Defined in heap_idf.c
  *
  * @param ptr Pointer to memory
  * @return true Memory can be used to store a TCB
@@ -443,7 +451,7 @@ bool xPortCheckValidTCBMem(const void *ptr);
 /**
  * @brief Checks if a given piece of memory can be used to store a task's stack
  *
- * - Defined in port_common.c
+ * - Defined in heap_idf.c
  *
  * @param ptr Pointer to memory
  * @return true Memory can be used to store a task stack
@@ -451,8 +459,8 @@ bool xPortCheckValidTCBMem(const void *ptr);
  */
 bool xPortcheckValidStackMem(const void *ptr);
 
-#define portVALID_TCB_MEM(ptr) xPortCheckValidTCBMem(ptr)
-#define portVALID_STACK_MEM(ptr) xPortcheckValidStackMem(ptr)
+#define portVALID_TCB_MEM(ptr)      xPortCheckValidTCBMem(ptr)
+#define portVALID_STACK_MEM(ptr)    xPortcheckValidStackMem(ptr)
 
 // --------------------- App-Trace -------------------------
 
@@ -461,14 +469,6 @@ extern int xPortSwitchFlag;
 #define os_task_switch_is_pended(_cpu_) (xPortSwitchFlag)
 #else
 #define os_task_switch_is_pended(_cpu_) (false)
-#endif
-
-// --------------------- Debugging -------------------------
-
-#if CONFIG_FREERTOS_ASSERT_ON_UNTESTED_FUNCTION
-#define UNTESTED_FUNCTION() do{ esp_rom_printf("Untested FreeRTOS function %s\r\n", __FUNCTION__); configASSERT(false); } while(0)
-#else
-#define UNTESTED_FUNCTION()
 #endif
 
 #ifdef __cplusplus

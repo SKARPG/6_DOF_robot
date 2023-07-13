@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2022 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2022-2023 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -14,6 +14,7 @@
 #endif
 #include "esp_log.h"
 #include "esp_check.h"
+#include "esp_clk_tree.h"
 #include "esp_private/periph_ctrl.h"
 #include "soc/mcpwm_periph.h"
 #include "hal/mcpwm_ll.h"
@@ -55,6 +56,7 @@ mcpwm_group_t *mcpwm_acquire_group_handle(int group_id)
             // disable all interrupts and clear pending status
             mcpwm_ll_intr_enable(hal->dev, UINT32_MAX, false);
             mcpwm_ll_intr_clear_status(hal->dev, UINT32_MAX);
+            mcpwm_ll_group_enable_clock(hal->dev, true);
         }
     } else { // group already install
         group = s_platform.groups[group_id];
@@ -81,6 +83,7 @@ void mcpwm_release_group_handle(mcpwm_group_t *group)
     if (s_platform.group_ref_counts[group_id] == 0) {
         do_deinitialize = true;
         s_platform.groups[group_id] = NULL; // deregister from platfrom
+        mcpwm_ll_group_enable_clock(group->hal.dev, false);
         // hal layer deinitialize
         mcpwm_hal_deinit(&group->hal);
         periph_module_disable(mcpwm_periph_signals.groups[group_id].module);
@@ -93,7 +96,7 @@ void mcpwm_release_group_handle(mcpwm_group_t *group)
     }
 }
 
-esp_err_t mcpwm_select_periph_clock(mcpwm_group_t *group, mcpwm_timer_clock_source_t clk_src)
+esp_err_t mcpwm_select_periph_clock(mcpwm_group_t *group, soc_module_clk_t clk_src)
 {
     esp_err_t ret = ESP_OK;
     uint32_t periph_src_clk_hz = 0;
@@ -112,21 +115,16 @@ esp_err_t mcpwm_select_periph_clock(mcpwm_group_t *group, mcpwm_timer_clock_sour
                         "group clock conflict, already is %d but attempt to %d", group->clk_src, clk_src);
 
     if (do_clock_init) {
-        // [clk_tree] ToDo: replace the following switch-case table by clock_tree APIs
-        switch (clk_src) {
-        case MCPWM_TIMER_CLK_SRC_DEFAULT:
-            periph_src_clk_hz = 160000000;
+        ESP_RETURN_ON_ERROR(esp_clk_tree_src_get_freq_hz(clk_src, ESP_CLK_TREE_SRC_FREQ_PRECISION_CACHED, &periph_src_clk_hz), TAG, "get clock source freq failed");
+
 #if CONFIG_PM_ENABLE
-            sprintf(group->pm_lock_name, "mcpwm_%d", group->group_id); // e.g. mcpwm_0
-            ret  = esp_pm_lock_create(ESP_PM_APB_FREQ_MAX, 0, group->pm_lock_name, &group->pm_lock);
-            ESP_RETURN_ON_ERROR(ret, TAG, "create ESP_PM_APB_FREQ_MAX lock failed");
-            ESP_LOGD(TAG, "install ESP_PM_APB_FREQ_MAX lock for MCPWM group(%d)", group->group_id);
+        sprintf(group->pm_lock_name, "mcpwm_%d", group->group_id); // e.g. mcpwm_0
+        ret  = esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, group->pm_lock_name, &group->pm_lock);
+        ESP_RETURN_ON_ERROR(ret, TAG, "create pm lock failed");
+        ESP_LOGD(TAG, "install NO_LIGHT_SLEEP lock for MCPWM group(%d)", group->group_id);
 #endif // CONFIG_PM_ENABLE
-            break;
-        default:
-            ESP_RETURN_ON_FALSE(false, ESP_ERR_NOT_SUPPORTED, TAG, "clock source %d is not supported", clk_src);
-            break;
-        }
+
+        mcpwm_ll_group_set_clock_source(group->hal.dev, clk_src);
         mcpwm_ll_group_set_clock_prescale(group->hal.dev, MCPWM_PERIPH_CLOCK_PRE_SCALE);
         group->resolution_hz = periph_src_clk_hz / MCPWM_PERIPH_CLOCK_PRE_SCALE;
         ESP_LOGD(TAG, "group (%d) clock resolution:%"PRIu32"Hz", group->group_id, group->resolution_hz);

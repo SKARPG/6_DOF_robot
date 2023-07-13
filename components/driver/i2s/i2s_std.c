@@ -45,11 +45,7 @@ static esp_err_t i2s_std_calculate_clock(i2s_chan_handle_t handle, const i2s_std
         clk_info->bclk = rate * handle->total_slot * slot_bits;
         clk_info->mclk = clk_info->bclk * clk_info->bclk_div;
     }
-#if SOC_I2S_SUPPORTS_APLL
-    clk_info->sclk = (clk_cfg->clk_src == I2S_CLK_SRC_APLL) ? i2s_set_get_apll_freq(clk_info->mclk) : I2S_LL_BASE_CLK;
-#else
-    clk_info->sclk = I2S_LL_BASE_CLK;
-#endif
+    clk_info->sclk = i2s_get_source_clk_freq(clk_cfg->clk_src, clk_info->mclk);
     clk_info->mclk_div = clk_info->sclk / clk_info->mclk;
 
     /* Check if the configuration is correct */
@@ -62,7 +58,9 @@ static esp_err_t i2s_std_set_clock(i2s_chan_handle_t handle, const i2s_std_clk_c
 {
     esp_err_t ret = ESP_OK;
     i2s_std_config_t *std_cfg = (i2s_std_config_t *)(handle->mode_info);
-    ESP_RETURN_ON_FALSE(std_cfg->slot_cfg.data_bit_width != I2S_DATA_BIT_WIDTH_24BIT ||
+    i2s_data_bit_width_t real_slot_bit = (int)std_cfg->slot_cfg.slot_bit_width < (int)std_cfg->slot_cfg.data_bit_width ?
+                                         std_cfg->slot_cfg.data_bit_width : std_cfg->slot_cfg.slot_bit_width;
+    ESP_RETURN_ON_FALSE(real_slot_bit != I2S_DATA_BIT_WIDTH_24BIT ||
                         (clk_cfg->mclk_multiple % 3 == 0), ESP_ERR_INVALID_ARG, TAG,
                         "The 'mclk_multiple' should be the multiple of 3 while using 24-bit data width");
 

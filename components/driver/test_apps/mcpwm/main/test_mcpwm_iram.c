@@ -40,7 +40,7 @@ TEST_CASE("mcpwm_capture_iram_safe", "[mcpwm]")
     printf("install mcpwm capture timer\r\n");
     mcpwm_cap_timer_handle_t cap_timer = NULL;
     mcpwm_capture_timer_config_t cap_timer_config = {
-        .clk_src = MCPWM_CAPTURE_CLK_SRC_APB,
+        .clk_src = MCPWM_CAPTURE_CLK_SRC_DEFAULT,
         .group_id = 0,
     };
     TEST_ESP_OK(mcpwm_new_capture_timer(&cap_timer_config, &cap_timer));
@@ -79,9 +79,10 @@ TEST_CASE("mcpwm_capture_iram_safe", "[mcpwm]")
     unity_utils_run_cache_disable_stub(test_simulate_input_post_cache_disable, (void *)cap_gpio);
 
     printf("capture value: Pos=%"PRIu32", Neg=%"PRIu32"\r\n", cap_value[0], cap_value[1]);
-    // Capture timer is clocked from APB by default
-    uint32_t clk_src_res = esp_clk_apb_freq();
-    TEST_ASSERT_UINT_WITHIN(2000, clk_src_res / 1000, cap_value[1] - cap_value[0]);
+    uint32_t clk_src_res;
+    TEST_ESP_OK(mcpwm_capture_timer_get_resolution(cap_timer, &clk_src_res));
+    clk_src_res /= 1000; // convert to kHz
+    TEST_ASSERT_UINT_WITHIN(100, 1000, (cap_value[1] - cap_value[0]) * 1000 / clk_src_res);
 
     printf("uninstall capture channel and timer\r\n");
     TEST_ESP_OK(mcpwm_capture_channel_disable(pps_channel));

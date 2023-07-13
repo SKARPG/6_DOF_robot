@@ -15,7 +15,7 @@
 #include "hal/timer_ll.h"
 #include "hal/check.h"
 #include "soc/timer_periph.h"
-#include "esp_private/esp_clk.h"
+#include "esp_clk_tree.h"
 #include "soc/timer_group_reg.h"
 #include "esp_private/periph_ctrl.h"
 
@@ -63,7 +63,7 @@ esp_err_t timer_get_counter_value(timer_group_t group_num, timer_idx_t timer_num
     ESP_RETURN_ON_FALSE(timer_val != NULL, ESP_ERR_INVALID_ARG, TIMER_TAG,  TIMER_PARAM_ADDR_ERROR);
     ESP_RETURN_ON_FALSE(p_timer_obj[group_num][timer_num] != NULL, ESP_ERR_INVALID_ARG, TIMER_TAG,  TIMER_NEVER_INIT_ERROR);
     TIMER_ENTER_CRITICAL(&timer_spinlock[group_num]);
-    *timer_val = timer_ll_get_counter_value(p_timer_obj[group_num][timer_num]->hal.dev, timer_num);
+    *timer_val = timer_hal_capture_and_get_counter_value(&p_timer_obj[group_num][timer_num]->hal);
     TIMER_EXIT_CRITICAL(&timer_spinlock[group_num]);
     return ESP_OK;
 }
@@ -74,34 +74,14 @@ esp_err_t timer_get_counter_time_sec(timer_group_t group_num, timer_idx_t timer_
     ESP_RETURN_ON_FALSE(timer_num < TIMER_MAX, ESP_ERR_INVALID_ARG, TIMER_TAG,  TIMER_NUM_ERROR);
     ESP_RETURN_ON_FALSE(time != NULL, ESP_ERR_INVALID_ARG, TIMER_TAG,  TIMER_PARAM_ADDR_ERROR);
     ESP_RETURN_ON_FALSE(p_timer_obj[group_num][timer_num] != NULL, ESP_ERR_INVALID_ARG, TIMER_TAG,  TIMER_NEVER_INIT_ERROR);
-    uint64_t timer_val = timer_ll_get_counter_value(p_timer_obj[group_num][timer_num]->hal.dev, timer_num);
+    uint64_t timer_val = timer_hal_capture_and_get_counter_value(&p_timer_obj[group_num][timer_num]->hal);
     uint32_t div = p_timer_obj[group_num][timer_num]->divider;
-    // [clk_tree] TODO: replace the following switch table by clk_tree API
-    switch (p_timer_obj[group_num][timer_num]->clk_src) {
-#if SOC_TIMER_GROUP_SUPPORT_APB
-    case TIMER_SRC_CLK_APB:
-        *time = (double)timer_val * div / esp_clk_apb_freq();
-        break;
-#endif
-#if SOC_TIMER_GROUP_SUPPORT_XTAL
-    case TIMER_SRC_CLK_XTAL:
-        *time = (double)timer_val * div / esp_clk_xtal_freq();
-        break;
-#endif
-#if SOC_TIMER_GROUP_SUPPORT_AHB
-    case TIMER_SRC_CLK_AHB:
-        *time = (double)timer_val * div / (48 * 1000 * 1000);
-        break;
-#endif
-#if SOC_TIMER_GROUP_SUPPORT_PLL_F40M
-    case TIMER_SRC_CLK_PLL_F40M:
-        *time = (double)timer_val * div / (40 * 1000 * 1000);
-        break;
-#endif
-    default:
-        ESP_RETURN_ON_FALSE(false, ESP_ERR_INVALID_ARG, TIMER_TAG, "invalid clock source");
-        break;
-    }
+    // get clock source frequency
+    uint32_t counter_src_hz = 0;
+    ESP_RETURN_ON_ERROR(esp_clk_tree_src_get_freq_hz((soc_module_clk_t)p_timer_obj[group_num][timer_num]->clk_src,
+                        ESP_CLK_TREE_SRC_FREQ_PRECISION_CACHED, &counter_src_hz),
+                        TIMER_TAG, "get clock source frequency failed");
+    *time = (double)timer_val * div / counter_src_hz;
     return ESP_OK;
 }
 
@@ -364,9 +344,9 @@ esp_err_t timer_deinit(timer_group_t group_num, timer_idx_t timer_num)
     timer_hal_context_t *hal = &p_timer_obj[group_num][timer_num]->hal;
 
     TIMER_ENTER_CRITICAL(&timer_spinlock[group_num]);
-    timer_ll_enable_counter(hal->dev, timer_num, false);
     timer_ll_enable_intr(hal->dev, TIMER_LL_EVENT_ALARM(timer_num), false);
     timer_ll_clear_intr_status(hal->dev, TIMER_LL_EVENT_ALARM(timer_num));
+    timer_hal_deinit(hal);
     TIMER_EXIT_CRITICAL(&timer_spinlock[group_num]);
 
     free(p_timer_obj[group_num][timer_num]);
@@ -439,6 +419,7 @@ void IRAM_ATTR timer_group_enable_alarm_in_isr(timer_group_t group_num, timer_id
 
 uint64_t IRAM_ATTR timer_group_get_counter_value_in_isr(timer_group_t group_num, timer_idx_t timer_num)
 {
+    timer_ll_trigger_soft_capture(p_timer_obj[group_num][timer_num]->hal.dev, timer_num);
     uint64_t val = timer_ll_get_counter_value(p_timer_obj[group_num][timer_num]->hal.dev, timer_num);
     return val;
 }

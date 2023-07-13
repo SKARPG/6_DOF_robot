@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2022 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2022-2023 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -60,6 +60,7 @@ TEST_CASE("gptimer_set_get_raw_count", "[gptimer]")
 TEST_CASE("gptimer_wallclock_with_various_clock_sources", "[gptimer]")
 {
     gptimer_clock_source_t test_clk_srcs[] = SOC_GPTIMER_CLKS;
+    uint32_t timer_resolution_hz[SOC_TIMER_GROUP_TOTAL_TIMERS];
 
     // test with various clock sources
     for (size_t i = 0; i < sizeof(test_clk_srcs) / sizeof(test_clk_srcs[0]); i++) {
@@ -71,6 +72,7 @@ TEST_CASE("gptimer_wallclock_with_various_clock_sources", "[gptimer]")
         gptimer_handle_t timers[SOC_TIMER_GROUP_TOTAL_TIMERS];
         for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
             TEST_ESP_OK(gptimer_new_timer(&timer_config, &timers[i]));
+            TEST_ESP_OK(gptimer_get_resolution(timers[i], &timer_resolution_hz[i]));
         }
         // start timer before enable should fail
         TEST_ESP_ERR(ESP_ERR_INVALID_STATE, gptimer_start(timers[0]));
@@ -83,10 +85,12 @@ TEST_CASE("gptimer_wallclock_with_various_clock_sources", "[gptimer]")
             TEST_ESP_OK(gptimer_start(timers[i]));
         }
         vTaskDelay(pdMS_TO_TICKS(20)); // 20ms = 20_000 ticks
-        unsigned long long value = 0;
+        uint64_t value = 0;
         for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
             TEST_ESP_OK(gptimer_get_raw_count(timers[i], &value));
-            TEST_ASSERT_UINT_WITHIN(1000, 20000, value);
+            // convert the raw count to us
+            value = value * 1000000 / timer_resolution_hz[i];
+            TEST_ASSERT_UINT_WITHIN(1100, 20000, value);
         }
         printf("stop timers\r\n");
         for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
@@ -97,6 +101,8 @@ TEST_CASE("gptimer_wallclock_with_various_clock_sources", "[gptimer]")
         for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
             TEST_ESP_OK(gptimer_get_raw_count(timers[i], &value));
             printf("get raw count of gptimer %d: %llu\r\n", i, value);
+            // convert the raw count to us
+            value = value * 1000000 / timer_resolution_hz[i];
             TEST_ASSERT_UINT_WITHIN(1000, 20000, value);
         }
         printf("restart timers\r\n");
@@ -113,7 +119,9 @@ TEST_CASE("gptimer_wallclock_with_various_clock_sources", "[gptimer]")
         for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
             TEST_ESP_OK(gptimer_get_raw_count(timers[i], &value));
             printf("get raw count of gptimer %d: %llu\r\n", i, value);
-            TEST_ASSERT_UINT_WITHIN(2000, 40000, value);
+            // convert the raw count to us
+            value = value * 1000000 / timer_resolution_hz[i];
+            TEST_ASSERT_UINT_WITHIN(2500, 40000, value);
         }
         printf("disable timers\r\n");
         for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
@@ -125,6 +133,16 @@ TEST_CASE("gptimer_wallclock_with_various_clock_sources", "[gptimer]")
         }
     }
 }
+
+/**
+ * @note Delta of the timer count after the triggering of the alarm. Delta must be sufficient large to account for the latency
+ * between the alarm triggering and the execution of the callback that actually stops the gptimer.
+ */
+#if CONFIG_PM_ENABLE
+#define GPTIMER_STOP_ON_ALARM_COUNT_DELTA  150
+#else
+#define GPTIMER_STOP_ON_ALARM_COUNT_DELTA  50
+#endif // CONFIG_PM_ENABLE
 
 TEST_ALARM_CALLBACK_ATTR static bool test_gptimer_alarm_stop_callback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
 {
@@ -174,7 +192,7 @@ TEST_CASE("gptimer_stop_on_alarm", "[gptimer]")
     for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
         TEST_ESP_OK(gptimer_get_raw_count(timers[i], &value));
         printf("get raw count of gptimer %d: %llu\r\n", i, value);
-        TEST_ASSERT_UINT_WITHIN(40, 100000 * (i + 1), value);
+        TEST_ASSERT_UINT_WITHIN(GPTIMER_STOP_ON_ALARM_COUNT_DELTA, 100000 * (i + 1), value);
     }
 
     printf("restart timers\r\n");
@@ -192,7 +210,7 @@ TEST_CASE("gptimer_stop_on_alarm", "[gptimer]")
     for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
         TEST_ESP_OK(gptimer_get_raw_count(timers[i], &value));
         printf("get raw count of gptimer %d: %llu\r\n", i, value);
-        TEST_ASSERT_UINT_WITHIN(40, 100000 * (i + 1), value);
+        TEST_ASSERT_UINT_WITHIN(GPTIMER_STOP_ON_ALARM_COUNT_DELTA, 100000 * (i + 1), value);
     }
 
     for (int i = 0; i < SOC_TIMER_GROUP_TOTAL_TIMERS; i++) {
@@ -201,13 +219,23 @@ TEST_CASE("gptimer_stop_on_alarm", "[gptimer]")
     }
 }
 
+/**
+ * @note Delta of the timer count after the triggering of the alarm. Delta must be sufficient large to account for the latency
+ * between the alarm triggering and the capturing of the counter's value in the subsequent ISR.
+ */
+#if CONFIG_PM_ENABLE
+#define GPTIMER_AUTO_RELOAD_ON_ALARM_COUNT_DELTA  200
+#else
+#define GPTIMER_AUTO_RELOAD_ON_ALARM_COUNT_DELTA  30
+#endif // CONFIG_PM_ENABLE
+
 TEST_ALARM_CALLBACK_ATTR static bool test_gptimer_alarm_reload_callback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
 {
     TaskHandle_t task_handle = (TaskHandle_t)user_data;
     BaseType_t high_task_wakeup;
     esp_rom_printf("alarm isr count=%llu\r\n", edata->count_value);
     // check if the count value has been reloaded
-    TEST_ASSERT_UINT_WITHIN(20, 100, edata->count_value);
+    TEST_ASSERT_UINT_WITHIN(GPTIMER_AUTO_RELOAD_ON_ALARM_COUNT_DELTA, 100, edata->count_value);
     vTaskNotifyGiveFromISR(task_handle, &high_task_wakeup);
     return high_task_wakeup == pdTRUE;
 }
@@ -255,6 +283,7 @@ TEST_CASE("gptimer_auto_reload_on_alarm", "[gptimer]")
     }
 }
 
+
 TEST_ALARM_CALLBACK_ATTR static bool test_gptimer_alarm_normal_callback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
 {
     TaskHandle_t task_handle = (TaskHandle_t)user_data;
@@ -264,6 +293,17 @@ TEST_ALARM_CALLBACK_ATTR static bool test_gptimer_alarm_normal_callback(gptimer_
     vTaskNotifyGiveFromISR(task_handle, &high_task_wakeup);
     return high_task_wakeup == pdTRUE;
 }
+
+/**
+ * @note Delta of the timer count after the triggering of the alarm. Delta must be sufficient large to account for the latency
+ * between the alarm triggering and the capturing of the counter's value in the subsequent ISR.
+ * Also should account for the inaccuracy of the systick during DFS.
+*/
+#if CONFIG_PM_ENABLE
+#define GPTIMER_ONE_SHOT_ALARM_COUNT_DELTA 15000
+#else
+#define GPTIMER_ONE_SHOT_ALARM_COUNT_DELTA 1000
+#endif // CONFIG_PM_ENABLE
 
 TEST_CASE("gptimer_one_shot_alarm", "[gptimer]")
 {
@@ -299,7 +339,7 @@ TEST_CASE("gptimer_one_shot_alarm", "[gptimer]")
         // the alarm is stopped, but the counter should still work
         uint64_t value = 0;
         TEST_ESP_OK(gptimer_get_raw_count(timers[i], &value));
-        TEST_ASSERT_UINT_WITHIN(1000, 1100000, value); // 1100000 = 100ms alarm + 1s delay
+        TEST_ASSERT_UINT_WITHIN(GPTIMER_ONE_SHOT_ALARM_COUNT_DELTA, 1100000, value); // 1100000 = 100ms alarm + 1s delay
         TEST_ESP_OK(gptimer_stop(timers[i]));
     }
 
@@ -383,13 +423,23 @@ TEST_CASE("gptimer_update_alarm_dynamically", "[gptimer]")
     }
 }
 
+/**
+ * @noteDelta of the timer count after the triggering of the alarm. Delta must be sufficient large to account for the latency
+ * between the alarm triggering and the capturing of the counter's value in the subsequent ISR.
+ */
+#if CONFIG_PM_ENABLE
+#define GPTIMER_COUNT_DOWN_RELOAD_DELTA  200
+#else
+#define GPTIMER_COUNT_DOWN_RELOAD_DELTA  30
+#endif // CONFIG_PM_ENABLE
+
 TEST_ALARM_CALLBACK_ATTR static bool test_gptimer_count_down_reload_alarm_callback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
 {
     TaskHandle_t task_handle = (TaskHandle_t)user_data;
     BaseType_t high_task_wakeup;
     esp_rom_printf("alarm isr count=%llu\r\n", edata->count_value);
     // check if the count value has been reloaded
-    TEST_ASSERT_UINT_WITHIN(20, 200000, edata->count_value);
+    TEST_ASSERT_UINT_WITHIN(GPTIMER_COUNT_DOWN_RELOAD_DELTA, 200000, edata->count_value);
     vTaskNotifyGiveFromISR(task_handle, &high_task_wakeup);
     return high_task_wakeup == pdTRUE;
 }
@@ -498,4 +548,51 @@ TEST_CASE("gptimer_overflow", "[gptimer]")
         TEST_ESP_OK(gptimer_disable(timers[i]));
         TEST_ESP_OK(gptimer_del_timer(timers[i]));
     }
+}
+
+TEST_ALARM_CALLBACK_ATTR static bool test_gptimer_alarm_late_callback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
+{
+    bool *alarm_fired = (bool *)user_data;
+    *alarm_fired = true;
+    esp_rom_printf("alarm isr count=%llu\r\n", edata->count_value);
+    return false;
+}
+
+TEST_CASE("gptimer_trig_alarm_with_old_count", "[gptimer]")
+{
+    printf("install gptimer driver\r\n");
+    gptimer_config_t timer_config = {
+        .resolution_hz = 10 * 1000, // 10KHz, 1 tick = 0.1ms
+        .clk_src = GPTIMER_CLK_SRC_DEFAULT,
+        .direction = GPTIMER_COUNT_UP,
+    };
+    gptimer_handle_t timer;
+    TEST_ESP_OK(gptimer_new_timer(&timer_config, &timer));
+
+    printf("register alarm callback\r\n");
+    bool alarm_fired = false;
+    gptimer_event_callbacks_t cbs = {
+        .on_alarm = test_gptimer_alarm_late_callback,
+    };
+    TEST_ESP_OK(gptimer_register_event_callbacks(timer, &cbs, &alarm_fired));
+    TEST_ESP_OK(gptimer_enable(timer));
+    TEST_ESP_OK(gptimer_start(timer));
+
+    printf("let the timer go for sometime\r\n");
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    printf("set alarm config with a very early count value\r\n");
+    gptimer_alarm_config_t alarm_config = {
+        .reload_count = 0,
+        .alarm_count = 10, // 1ms < current count, so the alarm should fire immediately
+    };
+    TEST_ESP_OK(gptimer_set_alarm_action(timer, &alarm_config));
+
+    vTaskDelay(pdMS_TO_TICKS(100));
+    // check it's fired
+    TEST_ASSERT_TRUE(alarm_fired);
+
+    TEST_ESP_OK(gptimer_stop(timer));
+    TEST_ESP_OK(gptimer_disable(timer));
+    TEST_ESP_OK(gptimer_del_timer(timer));
 }

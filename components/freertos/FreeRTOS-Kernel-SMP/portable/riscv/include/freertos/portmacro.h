@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2022 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2023 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -9,7 +9,7 @@
 #include "sdkconfig.h"
 #include <stdint.h>
 #include "spinlock.h"
-#include "soc/interrupt_core0_reg.h"
+#include "soc/interrupt_reg.h"
 #include "esp_macros.h"
 #include "esp_cpu.h"
 #include "esp_private/crosscore_int.h"
@@ -205,7 +205,7 @@ extern void vTaskExitCritical( void );
 #define portALT_GET_RUN_TIME_COUNTER_VALUE(x)       do {x = (uint32_t)esp_timer_get_time();} while(0)
 #endif
 
-// ------------------- TCB Cleanup ----------------------
+// --------------------- TCB Cleanup -----------------------
 
 #define portCLEAN_UP_TCB( pxTCB )                   vPortCleanUpTCB( pxTCB )
 
@@ -256,11 +256,11 @@ void vPortEnterCritical(void);
 void vPortExitCritical(void);
 
 //IDF task critical sections
-#define portTRY_ENTER_CRITICAL(lock, timeout)       {((void) lock; (void) timeout; vPortEnterCritical(); pdPASS;)}
+#define portTRY_ENTER_CRITICAL(lock, timeout)       ({(void) lock; (void) timeout; vPortEnterCritical(); pdPASS;})
 #define portENTER_CRITICAL_IDF(lock)                ({(void) lock; vPortEnterCritical();})
 #define portEXIT_CRITICAL_IDF(lock)                 ({(void) lock; vPortExitCritical();})
 //IDF ISR critical sections
-#define portTRY_ENTER_CRITICAL_ISR(lock, timeout)   {((void) lock; (void) timeout; vPortEnterCritical(); pdPASS;)}
+#define portTRY_ENTER_CRITICAL_ISR(lock, timeout)   ({(void) lock; (void) timeout; vPortEnterCritical(); pdPASS;})
 #define portENTER_CRITICAL_ISR(lock)                ({(void) lock; vPortEnterCritical();})
 #define portEXIT_CRITICAL_ISR(lock)                 ({(void) lock; vPortExitCritical();})
 //IDF safe critical sections (they're the same)
@@ -286,19 +286,36 @@ static inline bool IRAM_ATTR xPortCanYield(void)
 
 void vPortSetStackWatchpoint(void *pxStackStart);
 
-#define portVALID_TCB_MEM(ptr)      (esp_ptr_internal(ptr) && esp_ptr_byte_accessible(ptr))
-#ifdef CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY
-#define portVALID_STACK_MEM(ptr)    (esp_ptr_byte_accessible(ptr))
-#else
-#define portVALID_STACK_MEM(ptr)    (esp_ptr_internal(ptr) && esp_ptr_byte_accessible(ptr))
-#endif
+// -------------------- Heap Related -----------------------
 
-#define portTcbMemoryCaps               (MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)
-#define portStackMemoryCaps             (MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)
+/**
+ * @brief Checks if a given piece of memory can be used to store a task's TCB
+ *
+ * - Defined in heap_idf.c
+ *
+ * @param ptr Pointer to memory
+ * @return true Memory can be used to store a TCB
+ * @return false Otherwise
+ */
+bool xPortCheckValidTCBMem(const void *ptr);
+
+/**
+ * @brief Checks if a given piece of memory can be used to store a task's stack
+ *
+ * - Defined in heap_idf.c
+ *
+ * @param ptr Pointer to memory
+ * @return true Memory can be used to store a task stack
+ * @return false Otherwise
+ */
+bool xPortcheckValidStackMem(const void *ptr);
+
+#define portVALID_TCB_MEM(ptr)      xPortCheckValidTCBMem(ptr)
+#define portVALID_STACK_MEM(ptr)    xPortcheckValidStackMem(ptr)
 
 /* ------------------------------------------------------ Misc ---------------------------------------------------------
  * - Miscellaneous porting macros
- * - These are not port of the FreeRTOS porting interface, but are used by other FreeRTOS dependent components
+ * - These are not part of the FreeRTOS porting interface, but are used by other FreeRTOS dependent components
  * ------------------------------------------------------------------------------------------------------------------ */
 
 // --------------------- App-Trace -------------------------
@@ -308,14 +325,6 @@ extern volatile BaseType_t xPortSwitchFlag;
 #define os_task_switch_is_pended(_cpu_) (xPortSwitchFlag)
 #else
 #define os_task_switch_is_pended(_cpu_) (false)
-#endif
-
-// --------------------- Debugging -------------------------
-
-#if CONFIG_FREERTOS_ASSERT_ON_UNTESTED_FUNCTION
-#define UNTESTED_FUNCTION() do{ esp_rom_printf("Untested FreeRTOS function %s\r\n", __FUNCTION__); configASSERT(false); } while(0)
-#else
-#define UNTESTED_FUNCTION()
 #endif
 
 // --------------- Compatibility Includes ------------------

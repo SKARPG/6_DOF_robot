@@ -5,6 +5,7 @@
  *
  * SPDX-FileContributor: 2016-2022 Espressif Systems (Shanghai) CO LTD
  */
+
 /*
  * FreeRTOS Kernel V10.4.3
  * Copyright (C) 2020 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
@@ -224,6 +225,39 @@ typedef void * MessageBufferHandle_t;
  */
 #define xMessageBufferCreateStatic( xBufferSizeBytes, pucMessageBufferStorageArea, pxStaticMessageBuffer ) \
     ( MessageBufferHandle_t ) xStreamBufferGenericCreateStatic( xBufferSizeBytes, 0, pdTRUE, pucMessageBufferStorageArea, pxStaticMessageBuffer )
+
+/**
+ * @cond !DOC_EXCLUDE_HEADER_SECTION
+ * message_buffer.h
+ *
+ * @code{c}
+ * BaseType_t xMessageBufferGetStaticBuffers( MessageBufferHandle_t xMessageBuffer,
+ *                                            uint8_t ** ppucMessageBufferStorageArea,
+ *                                            StaticMessageBuffer_t ** ppxStaticMessageBuffer );
+ * @endcode
+ * @endcond
+ *
+ * Retrieve pointers to a statically created message buffer's data structure
+ * buffer and storage area buffer. These are the same buffers that are supplied
+ * at the time of creation.
+ *
+ * @param xMessageBuffer The message buffer for which to retrieve the buffers.
+ *
+ * @param ppucMessageBufferStorageArea Used to return a pointer to the
+ * message buffer's storage area buffer.
+ *
+ * @param ppxStaticMessageBuffer Used to return a pointer to the message
+ * buffer's data structure buffer.
+ *
+ * @return pdTRUE if buffers were retrieved, pdFALSE otherwise..
+ *
+ * \defgroup xMessageBufferGetStaticBuffers xMessageBufferGetStaticBuffers
+ * \ingroup MessageBufferManagement
+ */
+#if ( configSUPPORT_STATIC_ALLOCATION == 1 )
+    #define xMessageBufferGetStaticBuffers( xMessageBuffer, ppucMessageBufferStorageArea, ppxStaticMessageBuffer ) \
+    xStreamBufferGetStaticBuffers( ( xMessageBuffer ), ( ppucMessageBufferStorageArea ), ( ppxStaticMessageBuffer ) )
+#endif /* configSUPPORT_STATIC_ALLOCATION */
 
 /**
  * @cond !DOC_EXCLUDE_HEADER_SECTION

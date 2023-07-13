@@ -22,6 +22,10 @@
 #include "hal/gpio_hal.h"
 #include "esp_rom_gpio.h"
 
+#if (SOC_RTCIO_PIN_COUNT > 0)
+#include "hal/rtc_io_hal.h"
+#endif
+
 static const char *GPIO_TAG = "gpio";
 #define GPIO_CHECK(a, str, ret_val) ESP_RETURN_ON_FALSE(a, ret_val, GPIO_TAG, "%s", str)
 
@@ -239,6 +243,26 @@ int gpio_get_level(gpio_num_t gpio_num)
     return gpio_hal_get_level(gpio_context.gpio_hal, gpio_num);
 }
 
+#if SOC_GPIO_SUPPORT_PIN_HYS_FILTER
+static esp_err_t gpio_hysteresis_enable(gpio_num_t gpio_num)
+{
+    gpio_hal_hysteresis_soft_enable(gpio_context.gpio_hal, gpio_num, true);
+    return ESP_OK;
+}
+
+static esp_err_t gpio_hysteresis_disable(gpio_num_t gpio_num)
+{
+    gpio_hal_hysteresis_soft_enable(gpio_context.gpio_hal, gpio_num, false);
+    return ESP_OK;
+}
+
+static esp_err_t gpio_hysteresis_by_efuse(gpio_num_t gpio_num)
+{
+    gpio_hal_hysteresis_from_efuse(gpio_context.gpio_hal, gpio_num);
+    return ESP_OK;
+}
+#endif  //SOC_GPIO_SUPPORT_PIN_HYS_FILTER
+
 esp_err_t gpio_set_pull_mode(gpio_num_t gpio_num, gpio_pull_mode_t pull)
 {
     GPIO_CHECK(GPIO_IS_VALID_GPIO(gpio_num), "GPIO number error", ESP_ERR_INVALID_ARG);
@@ -386,6 +410,15 @@ esp_err_t gpio_config(const gpio_config_t *pGPIOConfig)
                 gpio_intr_disable(io_num);
             }
 
+#if SOC_GPIO_SUPPORT_PIN_HYS_FILTER
+            if (pGPIOConfig->hys_ctrl_mode == GPIO_HYS_SOFT_ENABLE) {
+                gpio_hysteresis_enable(io_num);
+            } else if (pGPIOConfig->hys_ctrl_mode == GPIO_HYS_SOFT_DISABLE) {
+                gpio_hysteresis_disable(io_num);
+            } else {
+                gpio_hysteresis_by_efuse(io_num);
+            }
+#endif  //SOC_GPIO_SUPPORT_PIN_HYS_FILTER
             /* By default, all the pins have to be configured as GPIO pins. */
             gpio_hal_iomux_func_sel(io_reg, PIN_FUNC_GPIO);
         }
@@ -463,14 +496,24 @@ static void IRAM_ATTR gpio_intr_service(void *arg)
 esp_err_t gpio_install_isr_service(int intr_alloc_flags)
 {
     GPIO_CHECK(gpio_context.gpio_isr_func == NULL, "GPIO isr service already installed", ESP_ERR_INVALID_STATE);
-    esp_err_t ret;
-    portENTER_CRITICAL(&gpio_context.gpio_spinlock);
-    gpio_context.gpio_isr_func = (gpio_isr_func_t *) calloc(GPIO_NUM_MAX, sizeof(gpio_isr_func_t));
-    portEXIT_CRITICAL(&gpio_context.gpio_spinlock);
-    if (gpio_context.gpio_isr_func == NULL) {
-        ret = ESP_ERR_NO_MEM;
-    } else {
-        ret = gpio_isr_register(gpio_intr_service, NULL, intr_alloc_flags, &gpio_context.gpio_isr_handle);
+    esp_err_t ret = ESP_ERR_NO_MEM;
+    gpio_isr_func_t *isr_func = (gpio_isr_func_t *) calloc(GPIO_NUM_MAX, sizeof(gpio_isr_func_t));
+    if (isr_func) {
+        portENTER_CRITICAL(&gpio_context.gpio_spinlock);
+        if (gpio_context.gpio_isr_func == NULL) {
+            gpio_context.gpio_isr_func = isr_func;
+            portEXIT_CRITICAL(&gpio_context.gpio_spinlock);
+            ret = gpio_isr_register(gpio_intr_service, NULL, intr_alloc_flags, &gpio_context.gpio_isr_handle);
+            if (ret != ESP_OK) {
+                // registering failed, uninstall isr service
+                gpio_uninstall_isr_service();
+            }
+        } else {
+            // isr service already installed, free allocated resource
+            portEXIT_CRITICAL(&gpio_context.gpio_spinlock);
+            ret = ESP_ERR_INVALID_STATE;
+            free(isr_func);
+        }
     }
 
     return ret;
@@ -539,6 +582,9 @@ esp_err_t gpio_isr_register(void (*fn)(void *), void *arg, int intr_alloc_flags,
     gpio_isr_alloc_t p;
     p.source = ETS_GPIO_INTR_SOURCE;
     p.intr_alloc_flags = intr_alloc_flags;
+#if SOC_ANA_CMPR_SUPPORTED
+    p.intr_alloc_flags |= ESP_INTR_FLAG_SHARED;
+#endif
     p.fn = fn;
     p.arg = arg;
     p.handle = handle;
@@ -691,6 +737,7 @@ esp_err_t gpio_hold_dis(gpio_num_t gpio_num)
     return ret;
 }
 
+#if !SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP
 void gpio_deep_sleep_hold_en(void)
 {
     portENTER_CRITICAL(&gpio_context.gpio_spinlock);
@@ -704,9 +751,9 @@ void gpio_deep_sleep_hold_dis(void)
     gpio_hal_deep_sleep_hold_dis(gpio_context.gpio_hal);
     portEXIT_CRITICAL(&gpio_context.gpio_spinlock);
 }
+#endif //!SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP
 
 #if SOC_GPIO_SUPPORT_FORCE_HOLD
-
 esp_err_t IRAM_ATTR gpio_force_hold_all()
 {
 #if SOC_RTCIO_HOLD_SUPPORTED
@@ -728,7 +775,7 @@ esp_err_t IRAM_ATTR gpio_force_unhold_all()
 #endif
     return ESP_OK;
 }
-#endif
+#endif //SOC_GPIO_SUPPORT_FORCE_HOLD
 
 void gpio_iomux_in(uint32_t gpio, uint32_t signal_idx)
 {
@@ -915,7 +962,7 @@ esp_err_t gpio_sleep_pupd_config_unapply(gpio_num_t gpio_num)
 #if SOC_GPIO_SUPPORT_DEEPSLEEP_WAKEUP
 esp_err_t gpio_deep_sleep_wakeup_enable(gpio_num_t gpio_num, gpio_int_type_t intr_type)
 {
-    if (!gpio_hal_is_valid_deepsleep_wakeup_gpio(gpio_num)) {
+    if (!GPIO_IS_DEEP_SLEEP_WAKEUP_VALID_GPIO(gpio_num)) {
         ESP_LOGE(GPIO_TAG, "GPIO %d does not support deep sleep wakeup", gpio_num);
         return ESP_ERR_INVALID_ARG;
     }
@@ -934,7 +981,7 @@ esp_err_t gpio_deep_sleep_wakeup_enable(gpio_num_t gpio_num, gpio_int_type_t int
 
 esp_err_t gpio_deep_sleep_wakeup_disable(gpio_num_t gpio_num)
 {
-    if (!gpio_hal_is_valid_deepsleep_wakeup_gpio(gpio_num)) {
+    if (!GPIO_IS_DEEP_SLEEP_WAKEUP_VALID_GPIO(gpio_num)) {
         ESP_LOGE(GPIO_TAG, "GPIO %d does not support deep sleep wakeup", gpio_num);
         return ESP_ERR_INVALID_ARG;
     }

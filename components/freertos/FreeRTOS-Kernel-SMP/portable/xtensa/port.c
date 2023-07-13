@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2022 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2022-2023 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -20,6 +20,7 @@
 #include "esp_private/esp_int_wdt.h"
 #include "esp_private/systimer.h"
 #include "esp_private/periph_ctrl.h"
+#include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "esp_system.h"
 #include "esp_task.h"
@@ -31,18 +32,6 @@
 #include "esp_freertos_hooks.h"
 #include "esp_intr_alloc.h"
 #include "esp_memory_utils.h"
-#include "esp_chip_info.h"
-#if CONFIG_SPIRAM
-/* Required by esp_psram_extram_reserve_dma_pool() */
-#include "esp_psram.h"
-#include "esp_private/esp_psram_extram.h"
-#endif
-#ifdef CONFIG_APPTRACE_ENABLE
-#include "esp_app_trace.h"
-#endif
-#ifdef CONFIG_ESP_SYSTEM_GDBSTUB_RUNTIME
-#include "esp_gdbstub.h"                    /* Required by esp_gdbstub_init() */
-#endif // CONFIG_ESP_SYSTEM_GDBSTUB_RUNTIME
 #ifdef CONFIG_FREERTOS_SYSTICK_USES_SYSTIMER
 #include "soc/periph_defs.h"
 #include "soc/system_reg.h"
@@ -52,10 +41,26 @@
 
 _Static_assert(portBYTE_ALIGNMENT == 16, "portBYTE_ALIGNMENT must be set to 16");
 
-/*
-OS state variables
-*/
-volatile unsigned port_xSchedulerRunning[portNUM_PROCESSORS] = {0};
+/* ---------------------------------------------------- Variables ------------------------------------------------------
+ * - Various variables used to maintain the FreeRTOS port's state. Used from both port.c and various .S files
+ * - Constant offsets are used by assembly to jump to particular TCB members or a stack area (such as the CPSA). We use
+ *   C constants instead of preprocessor macros due to assembly lacking "offsetof()".
+ * ------------------------------------------------------------------------------------------------------------------ */
+
+#if XCHAL_CP_NUM > 0
+/* Offsets used to navigate to a task's CPSA on the stack */
+const DRAM_ATTR uint32_t offset_pxEndOfStack = offsetof(StaticTask_t, pxDummy8);
+const DRAM_ATTR uint32_t offset_cpsa = XT_CP_SIZE;  /* Offset to start of the CPSA area on the stack. See uxInitialiseStackCPSA(). */
+#if configNUM_CORES > 1
+/* Offset to TCB_t.uxCoreAffinityMask member. Used to pin unpinned tasks that use the FPU. */
+const DRAM_ATTR uint32_t offset_uxCoreAffinityMask = offsetof(StaticTask_t, uxDummy25);
+#if configUSE_CORE_AFFINITY != 1
+#error "configUSE_CORE_AFFINITY must be 1 on multicore targets with coprocessor support"
+#endif
+#endif /* configNUM_CORES > 1 */
+#endif /* XCHAL_CP_NUM > 0 */
+
+volatile unsigned port_xSchedulerRunning[portNUM_PROCESSORS] = {0}; // Indicates whether scheduler is running on a per-core basis
 unsigned int port_interruptNesting[portNUM_PROCESSORS] = {0};  // Interrupt nesting level. Increased/decreased in portasm.c, _frxt_int_enter/_frxt_int_exit
 //FreeRTOS SMP Locks
 portMUX_TYPE port_xTaskLock = portMUX_INITIALIZER_UNLOCKED;
@@ -234,32 +239,32 @@ void vPortSetupTimer(void)
             .us_to_ticks = systimer_us_to_ticks,
         };
         systimer_hal_set_tick_rate_ops(&systimer_hal, &ops);
-        systimer_ll_set_counter_value(systimer_hal.dev, SYSTIMER_LL_COUNTER_OS_TICK, 0);
-        systimer_ll_apply_counter_value(systimer_hal.dev, SYSTIMER_LL_COUNTER_OS_TICK);
+        systimer_ll_set_counter_value(systimer_hal.dev, SYSTIMER_COUNTER_OS_TICK, 0);
+        systimer_ll_apply_counter_value(systimer_hal.dev, SYSTIMER_COUNTER_OS_TICK);
 
         for (cpuid = 0; cpuid < SOC_CPU_CORES_NUM; cpuid++) {
-            systimer_hal_counter_can_stall_by_cpu(&systimer_hal, SYSTIMER_LL_COUNTER_OS_TICK, cpuid, false);
+            systimer_hal_counter_can_stall_by_cpu(&systimer_hal, SYSTIMER_COUNTER_OS_TICK, cpuid, false);
         }
 
         for (cpuid = 0; cpuid < portNUM_PROCESSORS; ++cpuid) {
-            uint32_t alarm_id = SYSTIMER_LL_ALARM_OS_TICK_CORE0 + cpuid;
+            uint32_t alarm_id = SYSTIMER_ALARM_OS_TICK_CORE0 + cpuid;
 
             /* configure the timer */
-            systimer_hal_connect_alarm_counter(&systimer_hal, alarm_id, SYSTIMER_LL_COUNTER_OS_TICK);
+            systimer_hal_connect_alarm_counter(&systimer_hal, alarm_id, SYSTIMER_COUNTER_OS_TICK);
             systimer_hal_set_alarm_period(&systimer_hal, alarm_id, 1000000UL / CONFIG_FREERTOS_HZ);
             systimer_hal_select_alarm_mode(&systimer_hal, alarm_id, SYSTIMER_ALARM_MODE_PERIOD);
-            systimer_hal_counter_can_stall_by_cpu(&systimer_hal, SYSTIMER_LL_COUNTER_OS_TICK, cpuid, true);
+            systimer_hal_counter_can_stall_by_cpu(&systimer_hal, SYSTIMER_COUNTER_OS_TICK, cpuid, true);
             if (cpuid == 0) {
                 systimer_hal_enable_alarm_int(&systimer_hal, alarm_id);
-                systimer_hal_enable_counter(&systimer_hal, SYSTIMER_LL_COUNTER_OS_TICK);
+                systimer_hal_enable_counter(&systimer_hal, SYSTIMER_COUNTER_OS_TICK);
 #ifndef CONFIG_FREERTOS_UNICORE
                 // SysTick of core 0 and core 1 are shifted by half of period
-                systimer_hal_counter_value_advance(&systimer_hal, SYSTIMER_LL_COUNTER_OS_TICK, 1000000UL / CONFIG_FREERTOS_HZ / 2);
+                systimer_hal_counter_value_advance(&systimer_hal, SYSTIMER_COUNTER_OS_TICK, 1000000UL / CONFIG_FREERTOS_HZ / 2);
 #endif
             }
         }
     } else {
-        uint32_t alarm_id = SYSTIMER_LL_ALARM_OS_TICK_CORE0 + cpuid;
+        uint32_t alarm_id = SYSTIMER_ALARM_OS_TICK_CORE0 + cpuid;
         systimer_hal_enable_alarm_int(&systimer_hal, alarm_id);
     }
 }
@@ -278,11 +283,11 @@ IRAM_ATTR void SysTickIsrHandler(void *arg)
     ESP_PM_TRACE_ENTER(TICK, cpuid);
 #endif
 
-    uint32_t alarm_id = SYSTIMER_LL_ALARM_OS_TICK_CORE0 + cpuid;
+    uint32_t alarm_id = SYSTIMER_ALARM_OS_TICK_CORE0 + cpuid;
     do {
         systimer_ll_clear_alarm_int(systimer_hal->dev, alarm_id);
 
-        uint32_t diff = systimer_hal_get_counter_value(systimer_hal, SYSTIMER_LL_COUNTER_OS_TICK) / systimer_ll_get_alarm_period(systimer_hal->dev, alarm_id) - s_handled_systicks[cpuid];
+        uint32_t diff = systimer_hal_get_counter_value(systimer_hal, SYSTIMER_COUNTER_OS_TICK) / systimer_ll_get_alarm_period(systimer_hal->dev, alarm_id) - s_handled_systicks[cpuid];
         if (diff > 0) {
             if (s_handled_systicks[cpuid] == 0) {
                 s_handled_systicks[cpuid] = diff;
@@ -304,121 +309,6 @@ IRAM_ATTR void SysTickIsrHandler(void *arg)
 
 #endif // CONFIG_FREERTOS_SYSTICK_USES_CCOUNT
 
-// --------------------- App Start-up ----------------------
-
-static const char *TAG = "cpu_start";
-
-extern void app_main(void);
-
-static void main_task(void *args)
-{
-#if !CONFIG_FREERTOS_UNICORE
-    // Wait for FreeRTOS initialization to finish on APP CPU, before replacing its startup stack
-    while (port_xSchedulerRunning[1] == 0) {
-        ;
-    }
-#endif
-
-    // [refactor-todo] check if there is a way to move the following block to esp_system startup
-    heap_caps_enable_nonos_stack_heaps();
-
-    // Now we have startup stack RAM available for heap, enable any DMA pool memory
-#if CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL
-    if (esp_psram_is_initialized()) {
-        esp_err_t r = esp_psram_extram_reserve_dma_pool(CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL);
-        if (r != ESP_OK) {
-            ESP_EARLY_LOGE(TAG, "Could not reserve internal/DMA pool (error 0x%x)", r);
-            abort();
-        }
-    }
-#endif
-
-    //Initialize TWDT if configured to do so
-#if CONFIG_ESP_TASK_WDT_INIT
-    esp_task_wdt_config_t twdt_config = {
-        .timeout_ms = CONFIG_ESP_TASK_WDT_TIMEOUT_S * 1000,
-        .idle_core_mask = 0,
-#if CONFIG_ESP_TASK_WDT_PANIC
-        .trigger_panic = true,
-#endif
-    };
-#if CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0
-    twdt_config.idle_core_mask |= (1 << 0);
-#endif
-#if CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1
-    twdt_config.idle_core_mask |= (1 << 1);
-#endif
-    ESP_ERROR_CHECK(esp_task_wdt_init(&twdt_config));
-#endif // CONFIG_ESP_TASK_WDT
-
-    app_main();
-    vTaskDelete(NULL);
-}
-
-void esp_startup_start_app_common(void)
-{
-#if CONFIG_ESP_INT_WDT
-    esp_int_wdt_init();
-    //Initialize the interrupt watch dog for CPU0.
-    esp_int_wdt_cpu_init();
-#endif
-
-    esp_crosscore_int_init();
-
-#ifdef CONFIG_ESP_SYSTEM_GDBSTUB_RUNTIME
-    esp_gdbstub_init();
-#endif // CONFIG_ESP_SYSTEM_GDBSTUB_RUNTIME
-
-    portBASE_TYPE res = xTaskCreatePinnedToCore(main_task, "main",
-                                                ESP_TASK_MAIN_STACK, NULL,
-                                                ESP_TASK_MAIN_PRIO, NULL, ESP_TASK_MAIN_CORE);
-    assert(res == pdTRUE);
-    (void)res;
-}
-
-void esp_startup_start_app_other_cores(void)
-{
-    // For now, we only support up to two core: 0 and 1.
-    if (xPortGetCoreID() >= 2) {
-        abort();
-    }
-
-    // Wait for FreeRTOS initialization to finish on PRO CPU
-    while (port_xSchedulerRunning[0] == 0) {
-        ;
-    }
-
-#if CONFIG_APPTRACE_ENABLE
-    // [refactor-todo] move to esp_system initialization
-    esp_err_t err = esp_apptrace_init();
-    assert(err == ESP_OK && "Failed to init apptrace module on APP CPU!");
-#endif
-
-#if CONFIG_ESP_INT_WDT
-    //Initialize the interrupt watch dog for CPU1.
-    esp_int_wdt_cpu_init();
-#endif
-
-    esp_crosscore_int_init();
-
-    ESP_EARLY_LOGI(TAG, "Starting scheduler on APP CPU.");
-    xPortStartScheduler();
-    abort(); /* Only get to here if FreeRTOS somehow very broken */
-}
-
-void esp_startup_start_app(void)
-{
-#if !CONFIG_ESP_INT_WDT
-#if CONFIG_ESP32_ECO3_CACHE_LOCK_FIX
-    assert(!soc_has_cache_lock_bug() && "ESP32 Rev 3 + Dual Core + PSRAM requires INT WDT enabled in project config!");
-#endif
-#endif
-
-    esp_startup_start_app_common();
-
-    ESP_EARLY_LOGI(TAG, "Starting scheduler on PRO CPU.");
-    vTaskStartScheduler();
-}
 
 
 /* ---------------------------------------------- Port Implementations -------------------------------------------------
@@ -496,88 +386,6 @@ void vPortEndScheduler( void )
     ;
 }
 
-// ----------------------- Memory --------------------------
-
-#define FREERTOS_SMP_MALLOC_CAPS    (MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)
-
-void *pvPortMalloc( size_t xSize )
-{
-    return heap_caps_malloc(xSize, FREERTOS_SMP_MALLOC_CAPS);
-}
-
-void vPortFree( void *pv )
-{
-    heap_caps_free(pv);
-}
-
-void vPortInitialiseBlocks( void )
-{
-    ;   //Does nothing, heap is initialized separately in ESP-IDF
-}
-
-size_t xPortGetFreeHeapSize( void )
-{
-    return esp_get_free_heap_size();
-}
-
-#if( configSTACK_ALLOCATION_FROM_SEPARATE_HEAP == 1 )
-void *pvPortMallocStack( size_t xSize )
-{
-    return NULL;
-}
-
-void vPortFreeStack( void *pv )
-{
-
-}
-#endif
-
-#if ( configSUPPORT_STATIC_ALLOCATION == 1 )
-void vApplicationGetIdleTaskMemory(StaticTask_t **ppxIdleTaskTCBBuffer,
-                                   StackType_t **ppxIdleTaskStackBuffer,
-                                   uint32_t *pulIdleTaskStackSize )
-{
-    StackType_t *pxStackBufferTemp;
-    StaticTask_t *pxTCBBufferTemp;
-    /* Stack always grows downwards (from high address to low address) on all
-     * ESP Xtensa targets. Given that the heap allocator likely allocates memory
-     * from low to high address, we allocate the stack first and then the TCB so
-     * that the stack does not grow downwards into the TCB.
-     *
-     * Allocate TCB and stack buffer in internal memory. */
-    pxStackBufferTemp = pvPortMalloc(CONFIG_FREERTOS_IDLE_TASK_STACKSIZE);
-    pxTCBBufferTemp = pvPortMalloc(sizeof(StaticTask_t));
-    assert(pxStackBufferTemp != NULL);
-    assert(pxTCBBufferTemp != NULL);
-    // Write back pointers
-    *ppxIdleTaskStackBuffer = pxStackBufferTemp;
-    *ppxIdleTaskTCBBuffer = pxTCBBufferTemp;
-    *pulIdleTaskStackSize = CONFIG_FREERTOS_IDLE_TASK_STACKSIZE;
-}
-
-void vApplicationGetTimerTaskMemory(StaticTask_t **ppxTimerTaskTCBBuffer,
-                                    StackType_t **ppxTimerTaskStackBuffer,
-                                    uint32_t *pulTimerTaskStackSize )
-{
-    StaticTask_t *pxTCBBufferTemp;
-    StackType_t *pxStackBufferTemp;
-    /* Stack always grows downwards (from high address to low address) on all
-     * ESP Xtensa targets. Given that the heap allocator likely allocates memory
-     * from low to high address, we allocate the stack first and then the TCB so
-     * that the stack does not grow downwards into the TCB.
-     *
-     * Allocate TCB and stack buffer in internal memory. */
-    pxStackBufferTemp = pvPortMalloc(configTIMER_TASK_STACK_DEPTH);
-    pxTCBBufferTemp = pvPortMalloc(sizeof(StaticTask_t));
-    assert(pxStackBufferTemp != NULL);
-    assert(pxTCBBufferTemp != NULL);
-    // Write back pointers
-    *ppxTimerTaskStackBuffer = pxStackBufferTemp;
-    *ppxTimerTaskTCBBuffer = pxTCBBufferTemp;
-    *pulTimerTaskStackSize = configTIMER_TASK_STACK_DEPTH;
-}
-#endif //( configSUPPORT_STATIC_ALLOCATION == 1 )
-
 // ------------------------ Stack --------------------------
 
 // User exception dispatcher when exiting
@@ -595,11 +403,239 @@ static void vPortTaskWrapper(TaskFunction_t pxCode, void *pvParameters)
 }
 #endif
 
-const DRAM_ATTR uint32_t offset_pxEndOfStack = offsetof(StaticTask_t, pxDummy8);
-#if ( configUSE_CORE_AFFINITY == 1 && configNUM_CORES > 1 )
-const DRAM_ATTR uint32_t offset_uxCoreAffinityMask = offsetof(StaticTask_t, uxDummy25);
-#endif // ( configUSE_CORE_AFFINITY == 1 && configNUM_CORES > 1 )
-const DRAM_ATTR uint32_t offset_cpsa = XT_CP_SIZE;
+/**
+ * @brief Align stack pointer in a downward growing stack
+ *
+ * This macro is used to round a stack pointer downwards to the nearest n-byte boundary, where n is a power of 2.
+ * This macro is generally used when allocating aligned areas on a downward growing stack.
+ */
+#define STACKPTR_ALIGN_DOWN(n, ptr)     ((ptr) & (~((n)-1)))
+
+#if XCHAL_CP_NUM > 0
+/**
+ * @brief Allocate and initialize coprocessor save area on the stack
+ *
+ * This function allocates the coprocessor save area on the stack (sized XT_CP_SIZE) which includes...
+ *  - Individual save areas for each coprocessor (size XT_CPx_SA, inclusive of each area's alignment)
+ *  - Coprocessor context switching flags (e.g., XT_CPENABLE, XT_CPSTORED, XT_CP_CS_ST, XT_CP_ASA).
+ *
+ * The coprocessor save area is aligned to a 16-byte boundary.
+ * The coprocessor context switching flags are then initialized
+ *
+ * @param[in] uxStackPointer Current stack pointer address
+ * @return Stack pointer that points to allocated and initialized the coprocessor save area
+ */
+FORCE_INLINE_ATTR UBaseType_t uxInitialiseStackCPSA(UBaseType_t uxStackPointer)
+{
+    /*
+    HIGH ADDRESS
+    |-------------------|      XT_CP_SIZE
+    | CPn SA            |           ^
+    | ...               |           |
+    | CP0 SA            |           |
+    | ----------------- |           |       ---- XCHAL_TOTAL_SA_ALIGN aligned
+    |-------------------|           |   12 bytes
+    | XT_CP_ASA         |           |       ^
+    | XT_CP_CS_ST       |           |       |
+    | XT_CPSTORED       |           |       |
+    | XT_CPENABLE       |           |       |
+    |-------------------| ---------------------- 16 byte aligned
+    LOW ADDRESS
+    */
+
+    // Allocate overall coprocessor save area, aligned down to 16 byte boundary
+    uxStackPointer = STACKPTR_ALIGN_DOWN(16, uxStackPointer - XT_CP_SIZE);
+    // Initialize the coprocessor context switching flags.
+    uint32_t *p = (uint32_t *)uxStackPointer;
+    p[0] = 0;   // Clear XT_CPENABLE and XT_CPSTORED
+    p[1] = 0;   // Clear XT_CP_CS_ST
+    // XT_CP_ASA points to the aligned start of the individual CP save areas (i.e., start of CP0 SA)
+    p[2] = (uint32_t)ALIGNUP(XCHAL_TOTAL_SA_ALIGN, (uint32_t)uxStackPointer + 12);
+    return uxStackPointer;
+}
+#endif /* XCHAL_CP_NUM > 0 */
+
+/**
+ * @brief Allocate and initialize GCC TLS area
+ *
+ * This function allocates and initializes the area on the stack used to store GCC TLS (Thread Local Storage) variables.
+ * - The area's size is derived from the TLS section's linker variables, and rounded up to a multiple of 16 bytes
+ * - The allocated area is aligned to a 16-byte aligned address
+ * - The TLS variables in the area are then initialized
+ *
+ * Each task access the TLS variables using the THREADPTR register plus an offset to obtain the address of the variable.
+ * The value for the THREADPTR register is also calculated by this function, and that value should be use to initialize
+ * the THREADPTR register.
+ *
+ * @param[in] uxStackPointer Current stack pointer address
+ * @param[out] ret_threadptr_reg_init Calculated THREADPTR register initialization value
+ * @return Stack pointer that points to the TLS area
+ */
+FORCE_INLINE_ATTR UBaseType_t uxInitialiseStackTLS(UBaseType_t uxStackPointer, uint32_t *ret_threadptr_reg_init)
+{
+    /*
+    TLS layout at link-time, where 0xNNN is the offset that the linker calculates to a particular TLS variable.
+
+    LOW ADDRESS
+            |---------------------------|   Linker Symbols
+            | Section                   |   --------------
+            | .flash.rodata             |
+         0x0|---------------------------| <- _flash_rodata_start
+          ^ | Other Data                |
+          | |---------------------------| <- _thread_local_start
+          | | .tbss                     | ^
+          V |                           | |
+      0xNNN | int example;              | | tls_area_size
+            |                           | |
+            | .tdata                    | V
+            |---------------------------| <- _thread_local_end
+            | Other data                |
+            | ...                       |
+            |---------------------------|
+    HIGH ADDRESS
+    */
+    // Calculate the TLS area's size (rounded up to multiple of 16 bytes).
+    extern int _thread_local_start, _thread_local_end, _flash_rodata_start, _flash_rodata_align;
+    const uint32_t tls_area_size = ALIGNUP(16, (uint32_t)&_thread_local_end - (uint32_t)&_thread_local_start);
+    // TODO: check that TLS area fits the stack
+
+    // Allocate space for the TLS area on the stack. The area must be allocated at a 16-byte aligned address
+    uxStackPointer = STACKPTR_ALIGN_DOWN(16, uxStackPointer - (UBaseType_t)tls_area_size);
+    // Initialize the TLS area with the initialization values of each TLS variable
+    memcpy((void *)uxStackPointer, &_thread_local_start, tls_area_size);
+
+    /*
+    Calculate the THREADPTR register's initialization value based on the link-time offset and the TLS area allocated on
+    the stack.
+
+    HIGH ADDRESS
+            |---------------------------|
+            | .tdata (*)                |
+          ^ | int example;              |
+          | |                           |
+          | | .tbss (*)                 |
+          | |---------------------------| <- uxStackPointer (start of TLS area)
+    0xNNN | |                           | ^
+          | |                           | |
+          |             ...               | (_thread_local_start - _flash_rodata_start) + align_up(TCB_SIZE, tls_section_alignment)
+          | |                           | |
+          | |                           | V
+          V |                           | <- threadptr register's value
+
+    LOW ADDRESS
+
+    Note: Xtensa is slightly different compared to the RISC-V port as there is an implicit aligned TCB_SIZE added to
+    the offset. (search for 'tpoff' in elf32-xtensa.c in BFD):
+        - "offset = address - tls_section_vma + align_up(TCB_SIZE, tls_section_alignment)"
+        - TCB_SIZE is hardcoded to 8
+    */
+    const uint32_t tls_section_align = (uint32_t)&_flash_rodata_align;  // ALIGN value of .flash.rodata section
+    #define TCB_SIZE 8
+    const uint32_t base = ALIGNUP(tls_section_align, TCB_SIZE);
+    *ret_threadptr_reg_init = (uint32_t)uxStackPointer - ((uint32_t)&_thread_local_start - (uint32_t)&_flash_rodata_start) - base;
+
+    return uxStackPointer;
+}
+
+/**
+ * @brief Initialize the task's starting interrupt stack frame
+ *
+ * This function initializes the task's starting interrupt stack frame. The dispatcher will use this stack frame in a
+ * context restore routine. Therefore, the starting stack frame must be initialized as if the task was interrupted right
+ * before its first instruction is called.
+ *
+ * - The stack frame is allocated to a 16-byte aligned address
+ * - The THREADPTR register is saved in the extra storage area of the stack frame. This is also initialized
+ *
+ * @param[in] uxStackPointer Current stack pointer address
+ * @param[in] pxCode Task function
+ * @param[in] pvParameters Task function's parameter
+ * @param[in] threadptr_reg_init THREADPTR register initialization value
+ * @return Stack pointer that points to the stack frame
+ */
+FORCE_INLINE_ATTR UBaseType_t uxInitialiseStackFrame(UBaseType_t uxStackPointer, TaskFunction_t pxCode, void *pvParameters, uint32_t threadptr_reg_init)
+{
+    /*
+    HIGH ADDRESS
+    |---------------------------|       ^ XT_STK_FRMSZ
+    |                           |       |
+    | Stack Frame Extra Storage |       |
+    |                           |       |
+    | ------------------------- |       |   ^ XT_STK_EXTRA
+    |                           |       |   |
+    | Intr/Exc Stack Frame      |       |   |
+    |                           |       V   V
+    | ------------------------- | ---------------------- 16 byte aligned
+    LOW ADDRESS
+    */
+
+    /*
+    Allocate space for the task's starting interrupt stack frame.
+    - The stack frame must be allocated to a 16-byte aligned address.
+    - We use XT_STK_FRMSZ (instead of sizeof(XtExcFrame)) as it...
+        - includes the size of the extra storage area
+        - includes the size for a base save area before the stack frame
+        - rounds up the total size to a multiple of 16
+    */
+    UBaseType_t uxStackPointerPrevious = uxStackPointer;
+    uxStackPointer = STACKPTR_ALIGN_DOWN(16, uxStackPointer - XT_STK_FRMSZ);
+
+    // Clear the entire interrupt stack frame
+    memset((void *)uxStackPointer, 0, (size_t)(uxStackPointerPrevious - uxStackPointer));
+
+    XtExcFrame *frame = (XtExcFrame *)uxStackPointer;
+
+    /*
+    Initialize common registers
+    */
+    frame->a0 = 0;                                          // Set the return address to 0 terminate GDB backtrace
+    frame->a1 = uxStackPointer + XT_STK_FRMSZ;              // Saved stack pointer should point to physical top of stack frame
+    frame->exit = (UBaseType_t) _xt_user_exit;              // User exception exit dispatcher
+
+    /*
+    Initialize the task's entry point. This will differ depending on
+    - Whether the task's entry point is the wrapper function or pxCode
+    - Whether Windowed ABI is used (for windowed, we mimic the task entry point being call4'd )
+    */
+    #if CONFIG_FREERTOS_TASK_FUNCTION_WRAPPER
+        frame->pc = (UBaseType_t) vPortTaskWrapper;         // Task entry point is the wrapper function
+        #ifdef __XTENSA_CALL0_ABI__
+            frame->a2 = (UBaseType_t) pxCode;               // Wrapper function's argument 0 (which is the task function)
+            frame->a3 = (UBaseType_t) pvParameters;         // Wrapper function's argument 1 (which is the task function's argument)
+        #else // __XTENSA_CALL0_ABI__
+            frame->a6 = (UBaseType_t) pxCode;               // Wrapper function's argument 0 (which is the task function), passed as if we call4'd
+            frame->a7 = (UBaseType_t) pvParameters;         // Wrapper function's argument 1 (which is the task function's argument), passed as if we call4'd
+        #endif // __XTENSA_CALL0_ABI__
+    #else
+        frame->pc = (UBaseType_t) pxCode;                   // Task entry point is the provided task function
+        #ifdef __XTENSA_CALL0_ABI__
+            frame->a2 = (UBaseType_t) pvParameters;         // Task function's argument
+        #else // __XTENSA_CALL0_ABI__
+            frame->a6 = (UBaseType_t) pvParameters;         // Task function's argument, passed as if we call4'd
+        #endif // __XTENSA_CALL0_ABI__
+    #endif
+
+    /*
+    Set initial PS to int level 0, EXCM disabled ('rfe' will enable), user mode.
+    For windowed ABI also set WOE and CALLINC (pretend task was 'call4'd)
+    */
+    #ifdef __XTENSA_CALL0_ABI__
+        frame->ps = PS_UM | PS_EXCM;
+    #else // __XTENSA_CALL0_ABI__
+        frame->ps = PS_UM | PS_EXCM | PS_WOE | PS_CALLINC(1);
+    #endif // __XTENSA_CALL0_ABI__
+
+    #ifdef XT_USE_SWPRI
+        // Set the initial virtual priority mask value to all 1's.
+        frame->vpri = 0xFFFFFFFF;
+    #endif
+
+    // Initialize the threadptr register in the extra save area of the stack frame
+    uint32_t *threadptr_reg = (uint32_t *)(uxStackPointer + XT_STK_EXTRA);
+    *threadptr_reg = threadptr_reg_init;
+
+    return uxStackPointer;
+}
 
 #if ( portHAS_STACK_OVERFLOW_CHECKING == 1 )
 StackType_t * pxPortInitialiseStack( StackType_t * pxTopOfStack,
@@ -612,131 +648,73 @@ StackType_t * pxPortInitialiseStack( StackType_t * pxTopOfStack,
                                      void * pvParameters )
 #endif
 {
-    StackType_t *sp, *tp;
-    XtExcFrame  *frame;
-#if XCHAL_CP_NUM > 0
-    uint32_t *p;
-#endif
-    uint32_t *threadptr;
-    void *task_thread_local_start;
-    extern int _thread_local_start, _thread_local_end, _flash_rodata_start, _flash_rodata_align;
-    // TODO: check that TLS area fits the stack
-    uint32_t thread_local_sz = (uint8_t *)&_thread_local_end - (uint8_t *)&_thread_local_start;
+#ifdef __clang_analyzer__
+    // Teach clang-tidy that pxTopOfStack cannot be a pointer to const
+    volatile StackType_t * pxTemp = pxTopOfStack;
+    pxTopOfStack = pxTemp;
+#endif /*__clang_analyzer__ */
+    /*
+    HIGH ADDRESS
+    |---------------------------| <- pxTopOfStack on entry
+    | Coproc Save Area          | (CPSA MUST BE FIRST)
+    | ------------------------- |
+    | TLS Variables             |
+    | ------------------------- | <- Start of useable stack
+    | Starting stack frame      |
+    | ------------------------- | <- pxTopOfStack on return (which is the tasks current SP)
+    |             |             |
+    |             |             |
+    |             V             |
+    ----------------------------- <- Bottom of stack
+    LOW ADDRESS
 
-    thread_local_sz = ALIGNUP(0x10, thread_local_sz);
+    - All stack areas are aligned to 16 byte boundary
+    - We use UBaseType_t for all of stack area initialization functions for more convenient pointer arithmetic
+    */
 
-    /* Initialize task's stack so that we have the following structure at the top:
-
-        ----LOW ADDRESSES ----------------------------------------HIGH ADDRESSES----------
-         task stack | interrupt stack frame | thread local vars | co-processor save area |
-        ----------------------------------------------------------------------------------
-                    |                                                                     |
-                    SP                                                                 pxTopOfStack
-
-        All parts are aligned to 16 byte boundary. */
-    sp = (StackType_t *) (((UBaseType_t)pxTopOfStack - XT_CP_SIZE - thread_local_sz - XT_STK_FRMSZ) & ~0xf);
-
-    /* Clear the entire frame (do not use memset() because we don't depend on C library) */
-    for (tp = sp; tp <= pxTopOfStack; ++tp) {
-        *tp = 0;
-    }
-
-    frame = (XtExcFrame *) sp;
-
-    /* Explicitly initialize certain saved registers */
-#if CONFIG_FREERTOS_TASK_FUNCTION_WRAPPER
-    frame->pc    = (UBaseType_t) vPortTaskWrapper;    /* task wrapper                        */
-#else
-    frame->pc   = (UBaseType_t) pxCode;                /* task entrypoint                    */
-#endif
-    frame->a0    = 0;                                /* to terminate GDB backtrace        */
-    frame->a1    = (UBaseType_t) sp + XT_STK_FRMSZ;    /* physical top of stack frame        */
-    frame->exit = (UBaseType_t) _xt_user_exit;        /* user exception exit dispatcher    */
-
-    /* Set initial PS to int level 0, EXCM disabled ('rfe' will enable), user mode. */
-    /* Also set entry point argument parameter. */
-#ifdef __XTENSA_CALL0_ABI__
-#if CONFIG_FREERTOS_TASK_FUNCTION_WRAPPER
-    frame->a2 = (UBaseType_t) pxCode;
-    frame->a3 = (UBaseType_t) pvParameters;
-#else
-    frame->a2 = (UBaseType_t) pvParameters;
-#endif
-    frame->ps = PS_UM | PS_EXCM;
-#else /* __XTENSA_CALL0_ABI__ */
-    /* + for windowed ABI also set WOE and CALLINC (pretend task was 'call4'd). */
-#if CONFIG_FREERTOS_TASK_FUNCTION_WRAPPER
-    frame->a6 = (UBaseType_t) pxCode;
-    frame->a7 = (UBaseType_t) pvParameters;
-#else
-    frame->a6 = (UBaseType_t) pvParameters;
-#endif
-    frame->ps = PS_UM | PS_EXCM | PS_WOE | PS_CALLINC(1);
-#endif /* __XTENSA_CALL0_ABI__ */
-
-#ifdef XT_USE_SWPRI
-    /* Set the initial virtual priority mask value to all 1's. */
-    frame->vpri = 0xFFFFFFFF;
-#endif
-
-    /* Init threadptr register and set up TLS run-time area.
-     * The diagram in port/riscv/port.c illustrates the calculations below.
-     */
-    task_thread_local_start = (void *)(((uint32_t)pxTopOfStack - XT_CP_SIZE - thread_local_sz) & ~0xf);
-    memcpy(task_thread_local_start, &_thread_local_start, thread_local_sz);
-    threadptr = (uint32_t *)(sp + XT_STK_EXTRA);
-    /* Calculate THREADPTR value.
-     * The generated code will add THREADPTR value to a constant value determined at link time,
-     * to get the address of the TLS variable.
-     * The constant value is calculated by the linker as follows
-     * (search for 'tpoff' in elf32-xtensa.c in BFD):
-     *    offset = address - tls_section_vma + align_up(TCB_SIZE, tls_section_alignment)
-     * where TCB_SIZE is hardcoded to 8.
-     * Note this is slightly different compared to the RISC-V port, where offset = address - tls_section_vma.
-     */
-    const uint32_t tls_section_alignment = (uint32_t) &_flash_rodata_align;  /* ALIGN value of .flash.rodata section */
-    const uint32_t tcb_size = 8; /* Unrelated to FreeRTOS, this is the constant from BFD */
-    const uint32_t base = (tcb_size + tls_section_alignment - 1) & (~(tls_section_alignment - 1));
-    *threadptr = (uint32_t)task_thread_local_start - ((uint32_t)&_thread_local_start - (uint32_t)&_flash_rodata_start) - base;
+    UBaseType_t uxStackPointer = (UBaseType_t)pxTopOfStack;
+    configASSERT((uxStackPointer & portBYTE_ALIGNMENT_MASK) == 0);
 
 #if XCHAL_CP_NUM > 0
-    /* Init the coprocessor save area (see xtensa_context.h) */
-    /* No access to TCB here, so derive indirectly. Stack growth is top to bottom.
-     * //p = (uint32_t *) xMPUSettings->coproc_area;
-     */
-    p = (uint32_t *)(((uint32_t) pxTopOfStack - XT_CP_SIZE) & ~0xf);
-    configASSERT( ( uint32_t ) p >= frame->a1 );
-    p[0] = 0;
-    p[1] = 0;
-    p[2] = (((uint32_t) p) + 12 + XCHAL_TOTAL_SA_ALIGN - 1) & -XCHAL_TOTAL_SA_ALIGN;
-#endif /* XCHAL_CP_NUM */
+    // Initialize the coprocessor save area. THIS MUST BE THE FIRST AREA due to access from _frxt_task_coproc_state()
+    uxStackPointer = uxInitialiseStackCPSA(uxStackPointer);
+    configASSERT((uxStackPointer & portBYTE_ALIGNMENT_MASK) == 0);
+#endif /* XCHAL_CP_NUM > 0 */
 
-    configASSERT(((uint32_t) sp & portBYTE_ALIGNMENT_MASK) == 0);
-    return sp;
+    // Initialize the GCC TLS area
+    uint32_t threadptr_reg_init;
+    uxStackPointer = uxInitialiseStackTLS(uxStackPointer, &threadptr_reg_init);
+    configASSERT((uxStackPointer & portBYTE_ALIGNMENT_MASK) == 0);
+
+    // Initialize the starting interrupt stack frame
+    uxStackPointer = uxInitialiseStackFrame(uxStackPointer, pxCode, pvParameters, threadptr_reg_init);
+    configASSERT((uxStackPointer & portBYTE_ALIGNMENT_MASK) == 0);
+
+    // Return the task's current stack pointer address which should point to the starting interrupt stack frame
+    return (StackType_t *)uxStackPointer;
 }
-
 // -------------------- Co-Processor -----------------------
 #if ( XCHAL_CP_NUM > 0 && configUSE_CORE_AFFINITY == 1 && configNUM_CORES > 1 )
 
-void _xt_coproc_release(volatile void *coproc_sa_base, BaseType_t xCoreID);
+void _xt_coproc_release(volatile void *coproc_sa_base, BaseType_t xTargetCoreID);
 
 void vPortCleanUpCoprocArea( void *pxTCB )
 {
-    StackType_t *coproc_area;
-    BaseType_t xCoreID;
+    UBaseType_t uxCoprocArea;
+    BaseType_t xTargetCoreID;
 
-    /* Calculate the coproc save area in the stack from the TCB base */
-    coproc_area = ( StackType_t * ) ( ( uint32_t ) ( pxTCB + offset_pxEndOfStack ));
-    coproc_area = ( StackType_t * ) ( ( ( portPOINTER_SIZE_TYPE ) coproc_area ) & ( ~( ( portPOINTER_SIZE_TYPE ) portBYTE_ALIGNMENT_MASK ) ) );
-    coproc_area = ( StackType_t * ) ( ( ( uint32_t ) coproc_area - XT_CP_SIZE ) & ~0xf );
+    /* Get pointer to the task's coprocessor save area from TCB->pxEndOfStack. See uxInitialiseStackCPSA() */
+    uxCoprocArea = ( UBaseType_t ) ( ( ( StaticTask_t * ) pxTCB )->pxDummy8 );  /* Get TCB_t.pxEndOfStack */
+    uxCoprocArea = STACKPTR_ALIGN_DOWN(16, uxCoprocArea - XT_CP_SIZE);
 
     /* Extract core ID from the affinity mask */
-    xCoreID = __builtin_ffs( * ( UBaseType_t * ) ( pxTCB + offset_uxCoreAffinityMask ) );
-    assert( xCoreID >= 1 );
-    xCoreID -= 1;
+    xTargetCoreID = ( ( StaticTask_t * ) pxTCB )->uxDummy25 ;
+    xTargetCoreID = ( BaseType_t ) __builtin_ffs( ( int ) xTargetCoreID );
+    assert( xTargetCoreID >= 1 ); // __builtin_ffs always returns first set index + 1
+    xTargetCoreID -= 1;
 
     /* If task has live floating point registers somewhere, release them */
-    _xt_coproc_release( coproc_area, xCoreID );
+    _xt_coproc_release( (void *)uxCoprocArea, xTargetCoreID );
 }
 #endif // ( XCHAL_CP_NUM > 0 && configUSE_CORE_AFFINITY == 1 && configNUM_CORES > 1 )
 
@@ -840,8 +818,19 @@ void vApplicationMinimalIdleHook( void )
  * Hook function called during prvDeleteTCB() to cleanup any
  * user defined static memory areas in the TCB.
  */
+#if CONFIG_FREERTOS_ENABLE_STATIC_TASK_CLEAN_UP
+void __real_vPortCleanUpTCB( void *pxTCB );
+
+void __wrap_vPortCleanUpTCB( void *pxTCB )
+#else
 void vPortCleanUpTCB ( void *pxTCB )
+#endif /* CONFIG_FREERTOS_ENABLE_STATIC_TASK_CLEAN_UP */
 {
+#if ( CONFIG_FREERTOS_ENABLE_STATIC_TASK_CLEAN_UP )
+    /* Call user defined vPortCleanUpTCB */
+    __real_vPortCleanUpTCB( pxTCB );
+#endif /* CONFIG_FREERTOS_ENABLE_STATIC_TASK_CLEAN_UP */
+
 #if ( CONFIG_FREERTOS_TLSP_DELETION_CALLBACKS )
     /* Call TLS pointers deletion callbacks */
     vPortTLSPointersDelCb( pxTCB );

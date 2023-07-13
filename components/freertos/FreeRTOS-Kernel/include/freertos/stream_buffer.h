@@ -5,6 +5,7 @@
  *
  * SPDX-FileContributor: 2016-2022 Espressif Systems (Shanghai) CO LTD
  */
+
 /*
  * FreeRTOS Kernel V10.4.3
  * Copyright (C) 2020 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
@@ -234,6 +235,40 @@ typedef struct StreamBufferDef_t * StreamBufferHandle_t;
  */
 #define xStreamBufferCreateStatic( xBufferSizeBytes, xTriggerLevelBytes, pucStreamBufferStorageArea, pxStaticStreamBuffer ) \
     xStreamBufferGenericCreateStatic( xBufferSizeBytes, xTriggerLevelBytes, pdFALSE, pucStreamBufferStorageArea, pxStaticStreamBuffer )
+
+/**
+ * @cond !DOC_EXCLUDE_HEADER_SECTION
+ * stream_buffer.h
+ *
+ * @code{c}
+ * BaseType_t xStreamBufferGetStaticBuffers( StreamBufferHandle_t xStreamBuffer,
+ *                                           uint8_t ** ppucStreamBufferStorageArea,
+ *                                           StaticStreamBuffer_t ** ppxStaticStreamBuffer );
+ * @endcode
+ * @endcond
+ *
+ * Retrieve pointers to a statically created stream buffer's data structure
+ * buffer and storage area buffer. These are the same buffers that are supplied
+ * at the time of creation.
+ *
+ * @param xStreamBuffer The stream buffer for which to retrieve the buffers.
+ *
+ * @param ppucStreamBufferStorageArea Used to return a pointer to the stream
+ * buffer's storage area buffer.
+ *
+ * @param ppxStaticStreamBuffer Used to return a pointer to the stream
+ * buffer's data structure buffer.
+ *
+ * @return pdTRUE if buffers were retrieved, pdFALSE otherwise.
+ *
+ * \defgroup xStreamBufferGetStaticBuffers xStreamBufferGetStaticBuffers
+ * \ingroup StreamBufferManagement
+ */
+#if ( configSUPPORT_STATIC_ALLOCATION == 1 )
+    BaseType_t xStreamBufferGetStaticBuffers( StreamBufferHandle_t xStreamBuffer,
+                                              uint8_t ** ppucStreamBufferStorageArea,
+                                              StaticStreamBuffer_t ** ppxStaticStreamBuffer ) PRIVILEGED_FUNCTION;
+#endif /* configSUPPORT_STATIC_ALLOCATION */
 
 /**
  * @cond !DOC_EXCLUDE_HEADER_SECTION

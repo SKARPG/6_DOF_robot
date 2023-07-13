@@ -35,6 +35,7 @@
 
 #include "esp_private/i2s_platform.h"
 #include "esp_private/periph_ctrl.h"
+#include "esp_private/esp_clk.h"
 
 #include "driver/gpio.h"
 #include "driver/i2s_common.h"
@@ -273,6 +274,8 @@ static esp_err_t i2s_register_channel(i2s_controller_t *i2s_obj, i2s_dir_t dir, 
     new_chan->callbacks.on_recv_q_ovf = NULL;
     new_chan->callbacks.on_sent = NULL;
     new_chan->callbacks.on_send_q_ovf = NULL;
+    new_chan->dma.rw_pos = 0;
+    new_chan->dma.curr_ptr = NULL;
     new_chan->start = NULL;
     new_chan->stop = NULL;
 
@@ -433,7 +436,7 @@ err:
 }
 
 #if SOC_I2S_SUPPORTS_APLL
-uint32_t i2s_set_get_apll_freq(uint32_t mclk_freq_hz)
+static uint32_t i2s_set_get_apll_freq(uint32_t mclk_freq_hz)
 {
     /* Calculate the expected APLL  */
     int mclk_div = (int)((SOC_APLL_MIN_HZ / mclk_freq_hz) + 1);
@@ -461,6 +464,41 @@ uint32_t i2s_set_get_apll_freq(uint32_t mclk_freq_hz)
     return real_freq;
 }
 #endif
+
+// [clk_tree] TODO: replace the following switch table by clk_tree API
+uint32_t i2s_get_source_clk_freq(i2s_clock_src_t clk_src, uint32_t mclk_freq_hz)
+{
+    switch (clk_src)
+    {
+#if SOC_I2S_SUPPORTS_APLL
+    case I2S_CLK_SRC_APLL:
+        return i2s_set_get_apll_freq(mclk_freq_hz);
+#endif
+#if SOC_I2S_SUPPORTS_XTAL
+    case I2S_CLK_SRC_XTAL:
+        (void)mclk_freq_hz;
+        return esp_clk_xtal_freq();
+#endif
+#if SOC_I2S_SUPPORTS_PLL_F160M
+    case I2S_CLK_SRC_PLL_160M:
+        (void)mclk_freq_hz;
+        return I2S_LL_PLL_F160M_CLK_FREQ;
+#endif
+#if SOC_I2S_SUPPORTS_PLL_F96M
+    case I2S_CLK_SRC_PLL_96M:
+        (void)mclk_freq_hz;
+        return I2S_LL_PLL_F96M_CLK_FREQ;
+#endif
+#if SOC_I2S_SUPPORTS_PLL_F64M
+    case I2S_CLK_SRC_PLL_64M:
+        (void)mclk_freq_hz;
+        return I2S_LL_PLL_F64M_CLK_FREQ;
+#endif
+    default:
+        // Invalid clock source
+        return 0;
+    }
+}
 
 #if SOC_GDMA_SUPPORTED
 static bool IRAM_ATTR i2s_dma_rx_callback(gdma_channel_handle_t dma_chan, gdma_event_data_t *event_data, void *user_data)
@@ -967,8 +1005,6 @@ esp_err_t i2s_channel_enable(i2s_chan_handle_t handle)
 #if CONFIG_PM_ENABLE
     esp_pm_lock_acquire(handle->pm_lock);
 #endif
-    handle->dma.curr_ptr = NULL;
-    handle->dma.rw_pos = 0;
     handle->start(handle);
     handle->state = I2S_CHAN_STATE_RUNNING;
     /* Reset queue */
@@ -992,10 +1028,15 @@ esp_err_t i2s_channel_disable(i2s_chan_handle_t handle)
 
     xSemaphoreTake(handle->mutex, portMAX_DELAY);
     ESP_GOTO_ON_FALSE(handle->state > I2S_CHAN_STATE_READY, ESP_ERR_INVALID_STATE, err, TAG, "the channel has not been enabled yet");
-    /* Update the state to force quit the current reading/wrinting operation */
+    /* Update the state to force quit the current reading/writing operation */
     handle->state = I2S_CHAN_STATE_READY;
-    /* Waiting for reading/wrinting operation quit */
+    /* Waiting for reading/wrinting operation quit
+     * It should be acquired before assigning the pointer to NULL,
+     * otherwise may cause NULL pointer panic while reading/writing threads haven't release the lock */
     xSemaphoreTake(handle->binary, portMAX_DELAY);
+    /* Reset the descriptor pointer */
+    handle->dma.curr_ptr = NULL;
+    handle->dma.rw_pos = 0;
     handle->stop(handle);
 #if CONFIG_PM_ENABLE
     esp_pm_lock_release(handle->pm_lock);
@@ -1009,6 +1050,60 @@ err:
     return ret;
 }
 
+esp_err_t i2s_channel_preload_data(i2s_chan_handle_t tx_handle, const void *src, size_t size, size_t *bytes_loaded)
+{
+    I2S_NULL_POINTER_CHECK(TAG, tx_handle);
+    ESP_RETURN_ON_FALSE(tx_handle->dir == I2S_DIR_TX, ESP_ERR_INVALID_ARG, TAG, "this channel is not tx channel");
+    ESP_RETURN_ON_FALSE(tx_handle->state == I2S_CHAN_STATE_READY, ESP_ERR_INVALID_STATE, TAG, "data can only be preloaded when the channel is READY");
+
+    uint8_t *data_ptr = (uint8_t *)src;
+    size_t remain_bytes = size;
+    size_t total_loaded_bytes = 0;
+
+    xSemaphoreTake(tx_handle->mutex, portMAX_DELAY);
+
+    /* The pre-load data will be loaded from the first descriptor */
+    if (tx_handle->dma.curr_ptr == NULL) {
+        tx_handle->dma.curr_ptr = tx_handle->dma.desc[0];
+        tx_handle->dma.rw_pos = 0;
+    }
+    lldesc_t *desc_ptr = (lldesc_t *)tx_handle->dma.curr_ptr;
+
+    /* Loop until no bytes in source buff remain or the descriptors are full */
+    while (remain_bytes) {
+        size_t bytes_can_load = remain_bytes > (tx_handle->dma.buf_size - tx_handle->dma.rw_pos) ?
+                            (tx_handle->dma.buf_size - tx_handle->dma.rw_pos) : remain_bytes;
+        /* When all the descriptors has loaded data, no more bytes can be loaded, break directly */
+        if (bytes_can_load == 0) {
+            break;
+        }
+        /* Load the data from the last loaded position */
+        memcpy((uint8_t *)(desc_ptr->buf + tx_handle->dma.rw_pos), data_ptr, bytes_can_load);
+        data_ptr += bytes_can_load;             // Move forward the data pointer
+        total_loaded_bytes += bytes_can_load;   // Add to the total loaded bytes
+        remain_bytes -= bytes_can_load;         // Update the remaining bytes to be loaded
+        tx_handle->dma.rw_pos += bytes_can_load;   // Move forward the dma buffer position
+        /* When the current position reach the end of the dma buffer */
+        if (tx_handle->dma.rw_pos == tx_handle->dma.buf_size) {
+            /* If the next descriptor is not the first descriptor, keep load to the first descriptor
+             * otherwise all descriptor has been loaded, break directly, the dma buffer position
+             * will remain at the end of the last dma buffer */
+            if (desc_ptr->empty != (uint32_t)tx_handle->dma.desc[0]) {
+                desc_ptr = (lldesc_t *)desc_ptr->empty;
+                tx_handle->dma.curr_ptr =  (void *)desc_ptr;
+                tx_handle->dma.rw_pos = 0;
+            } else {
+                break;
+            }
+        }
+    }
+    *bytes_loaded = total_loaded_bytes;
+
+    xSemaphoreGive(tx_handle->mutex);
+
+    return ESP_OK;
+}
+
 esp_err_t i2s_channel_write(i2s_chan_handle_t handle, const void *src, size_t size, size_t *bytes_written, uint32_t timeout_ms)
 {
     I2S_NULL_POINTER_CHECK(TAG, handle);
@@ -1018,7 +1113,9 @@ esp_err_t i2s_channel_write(i2s_chan_handle_t handle, const void *src, size_t si
     char *data_ptr;
     char *src_byte;
     size_t bytes_can_write;
-    *bytes_written = 0;
+    if (bytes_written) {
+        *bytes_written = 0;
+    }
 
     /* The binary semaphore can only be taken when the channel has been enabled and no other writing operation in progress */
     ESP_RETURN_ON_FALSE(xSemaphoreTake(handle->binary, pdMS_TO_TICKS(timeout_ms)) == pdTRUE, ESP_ERR_INVALID_STATE, TAG, "The channel is not enabled");
@@ -1041,7 +1138,9 @@ esp_err_t i2s_channel_write(i2s_chan_handle_t handle, const void *src, size_t si
         size -= bytes_can_write;
         src_byte += bytes_can_write;
         handle->dma.rw_pos += bytes_can_write;
-        (*bytes_written) += bytes_can_write;
+        if (bytes_written) {
+            (*bytes_written) += bytes_can_write;
+        }
     }
     xSemaphoreGive(handle->binary);
 
@@ -1057,7 +1156,9 @@ esp_err_t i2s_channel_read(i2s_chan_handle_t handle, void *dest, size_t size, si
     uint8_t *data_ptr;
     uint8_t *dest_byte;
     int bytes_can_read;
-    *bytes_read = 0;
+    if (bytes_read) {
+        *bytes_read = 0;
+    }
     dest_byte = (uint8_t *)dest;
     /* The binary semaphore can only be taken when the channel has been enabled and no other reading operation in progress */
     ESP_RETURN_ON_FALSE(xSemaphoreTake(handle->binary, pdMS_TO_TICKS(timeout_ms)) == pdTRUE, ESP_ERR_INVALID_STATE, TAG, "The channel is not enabled");
@@ -1079,7 +1180,9 @@ esp_err_t i2s_channel_read(i2s_chan_handle_t handle, void *dest, size_t size, si
         size -= bytes_can_read;
         dest_byte += bytes_can_read;
         handle->dma.rw_pos += bytes_can_read;
-        (*bytes_read) += bytes_can_read;
+        if (bytes_read) {
+            (*bytes_read) += bytes_can_read;
+        }
     }
     xSemaphoreGive(handle->binary);
 

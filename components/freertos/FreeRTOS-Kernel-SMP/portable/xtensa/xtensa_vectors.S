@@ -102,15 +102,8 @@
 #include "esp_private/panic_reason.h"
 #include "sdkconfig.h"
 #include "soc/soc.h"
+#include "xt_asm_utils.h"
 
-/*
-  Define for workaround: pin no-cpu-affinity tasks to a cpu when fpu is used.
-  Please change this when the tcb structure is changed
-*/
-.extern pxCurrentTCBs
-#if ( configUSE_CORE_AFFINITY == 1 && configNUM_CORES > 1 )
-.extern offset_uxCoreAffinityMask
-#endif // ( configUSE_CORE_AFFINITY == 1 && configNUM_CORES > 1 )
 
 /*
 --------------------------------------------------------------------------------
@@ -218,7 +211,7 @@
 
     /* Get mask of pending, enabled interrupts at this level into a2. */
 
-.L_xt_user_int_&level&:
+.L_xt_user_int_\level :
     rsr     a2, INTENABLE
     rsr     a3, INTERRUPT
     movi    a4, \mask
@@ -327,14 +320,14 @@
     #ifdef XT_USE_SWPRI
     j       8f
     #else
-    j       .L_xt_user_int_&level&          /* check for more interrupts */
+    j       .L_xt_user_int_\level           /* check for more interrupts */
     #endif
 
     #ifdef XT_RTOS_TIMER_INT
 7:
 
     .ifeq XT_TIMER_INTPRI - \level
-.L_xt_user_int_timer_&level&:
+.L_xt_user_int_timer_\level :
     /*
     Interrupt handler for the RTOS tick timer if at this level.
     We'll be reading the interrupt state again after this call
@@ -355,7 +348,7 @@
     #ifdef XT_USE_SWPRI
     j       8f
     #else
-    j       .L_xt_user_int_&level&          /* check for more interrupts */
+    j       .L_xt_user_int_\level           /* check for more interrupts */
     #endif
 
     #ifdef XT_USE_SWPRI
@@ -449,7 +442,101 @@ _DebugExceptionVector:
 
     .end        literal_prefix
 
+    .global    xt_debugexception
+    .weak xt_debugexception
+    .set xt_debugexception, _xt_debugexception
+    .section .iram1,"ax"
+    .type       _xt_debugexception,@function
+    .align      4
+_xt_debugexception:
+#if (CONFIG_ESP32_ECO3_CACHE_LOCK_FIX && CONFIG_BTDM_CTRL_HLI)
+#define XT_DEBUGCAUSE_DI        (5)
+    getcoreid   a0
+#if (CONFIG_BTDM_CTRL_PINNED_TO_CORE == PRO_CPU_NUM)
+    beqz    a0, 1f
+#else
+    bnez    a0, 1f
 #endif
+
+    rsr     a0, DEBUGCAUSE
+    extui   a0, a0, XT_DEBUGCAUSE_DI, 1
+    bnez    a0, _xt_debug_di_exc
+1:
+#endif //(CONFIG_ESP32_ECO3_CACHE_LOCK_FIX && CONFIG_BTDM_CTRL_HLI)
+
+    movi    a0,PANIC_RSN_DEBUGEXCEPTION
+    wsr     a0,EXCCAUSE
+    /* _xt_panic assumes a level 1 exception. As we're
+       crashing anyhow, copy EPC & EXCSAVE from DEBUGLEVEL
+       to level 1. */
+    rsr     a0,(EPC + XCHAL_DEBUGLEVEL)
+    wsr     a0,EPC_1
+    rsr     a0,(EXCSAVE + XCHAL_DEBUGLEVEL)
+    wsr     a0,EXCSAVE_1
+    call0   _xt_panic                       /* does not return */
+    rfi     XCHAL_DEBUGLEVEL
+
+#if (CONFIG_ESP32_ECO3_CACHE_LOCK_FIX && CONFIG_BTDM_CTRL_HLI)
+    .align  4
+_xt_debug_di_exc:
+
+    /*
+    The delay time can be calculated by the following formula:
+      T = ceil(0.25 + max(t1, t2)) us
+
+      t1 = 80 / f1, t2 = (1 + 14/N) * 20 / f2
+
+      f1: PSRAM access frequency, unit: MHz.
+      f2: Flash access frequency, unit: MHz.
+
+      When flash is slow/fast read, N = 1.
+      When flash is DOUT/DIO read, N = 2.
+      When flash is QOUT/QIO read, N = 4.
+
+      And after testing, when CPU frequency is 240 MHz, it will take 1us to loop 27 times.
+    */
+#if defined(CONFIG_ESPTOOLPY_FLASHMODE_QIO) || defined(CONFIG_ESPTOOLPY_FLASHMODE_QOUT)
+
+# if defined(CONFIG_ESPTOOLPY_FLASHFREQ_80M) && defined(CONFIG_SPIRAM_SPEED_80M)
+    movi    a0, 54
+# elif defined(CONFIG_ESPTOOLPY_FLASHFREQ_80M) && defined(CONFIG_SPIRAM_SPEED_40M)
+    movi    a0, 81
+# elif defined(CONFIG_ESPTOOLPY_FLASHFREQ_40M) && defined(CONFIG_SPIRAM_SPEED_40M)
+    movi    a0, 81
+# elif defined(CONFIG_ESPTOOLPY_FLASHFREQ_26M) && defined(CONFIG_SPIRAM_SPEED_40M)
+    movi    a0, 108
+# else
+    movi    a0, 135
+# endif
+
+#elif defined(CONFIG_ESPTOOLPY_FLASHMODE_DIO) || defined(CONFIG_ESPTOOLPY_FLASHMODE_DOUT)
+
+# if defined(CONFIG_ESPTOOLPY_FLASHFREQ_80M) && defined(CONFIG_SPIRAM_SPEED_80M)
+    movi    a0, 81
+# elif defined(CONFIG_ESPTOOLPY_FLASHFREQ_80M) && defined(CONFIG_SPIRAM_SPEED_40M)
+    movi    a0, 81
+# elif defined(CONFIG_ESPTOOLPY_FLASHFREQ_40M) && defined(CONFIG_SPIRAM_SPEED_40M)
+    movi    a0, 135
+# elif defined(CONFIG_ESPTOOLPY_FLASHFREQ_26M) && defined(CONFIG_SPIRAM_SPEED_40M)
+    movi    a0, 189
+# else
+    movi    a0, 243
+# endif
+
+#else
+    movi    a0, 243
+#endif
+
+1:  addi    a0, a0, -1         /* delay_us(N) */
+    .rept   4
+    nop
+    .endr
+    bnez    a0, 1b
+
+    rsr     a0, EXCSAVE+XCHAL_DEBUGLEVEL
+    rfi     XCHAL_DEBUGLEVEL
+#endif //(CONFIG_ESP32_ECO3_CACHE_LOCK_FIX && CONFIG_BTDM_CTRL_HLI)
+#endif // XCHAL_HAVE_DEBUG
 
 /*
 --------------------------------------------------------------------------------
@@ -859,22 +946,22 @@ _xt_coproc_owner_sa:
 /* Spinlock per core for accessing _xt_coproc_owner_sa array
  *
  * 0 = Spinlock available
- * 1 = Spinlock taken
+ * PRID = Spinlock taken
  *
  * The lock provides mutual exclusion for accessing the _xt_coproc_owner_sa array.
- * This array can be modified by both _xt_coproc_exc and _xt_coproc_release routines
- * simultaneously owing to the fact that the FreeRTOS SMP Kernel allows cross-core
- * task deletion. Therefore, the same memory location in the owner save-area array
- * could be modified at the same time.
+ * The array can be modified by multiple cores simultaneously (via _xt_coproc_exc
+ * and _xt_coproc_release). Therefore, this spinlock is defined to ensure thread
+ * safe access of the _xt_coproc_owner_sa array.
  */
+#if portNUM_PROCESSORS > 1
     .global _xt_coproc_owner_sa_lock
     .type   _xt_coproc_owner_sa_lock,@object
     .align  16                      /* minimize crossing cache boundaries */
 _xt_coproc_owner_sa_lock:
-    .space  (portNUM_PROCESSORS) << 2
+    .space  4
+#endif /* portNUM_PROCESSORS > 1 */
 
     .section .iram1,"ax"
-
     .align  4
 .L_goto_invalid:
     j   .L_xt_coproc_invalid    /* not in a thread (invalid) */
@@ -924,50 +1011,14 @@ _xt_coproc_exc:
     s32i    a4,  sp, XT_STK_A4
     s32i    a15, sp, XT_STK_A15
 
-    /* Aquire spinlock before proceeding with the exception handler.
-     * (Refer _xt_coproc_release for competing routine for the lock.)
-     *
-     * [refactor-todo]: The spinlock aquire/release routine can be
-     * refactored in to a macro later if the need arises to use it
-     * at more than one place in the port assembler files.
-     */
-.L_spinlock_loop:
-    movi        a2, _xt_coproc_owner_sa_lock    /* a2 = base address of lock variable */
-    getcoreid   a0                              /* get the core ID in a0 to calculate the offset of the lock variable */
-    addx4       a2, a0, a2                      /* a2 = address of desired lock variable */
-    movi        a0, 0                           /* a0 = 0 */
-    wsr         a0, scompare1                   /* scompare1 = a0 :- Expect the spinlock to be free (value = 0) */
-    movi        a0, 1                           /* a0 = 1 :- Write 1 to take the spinlock */
-    s32c1i      a0, a2, 0                       /* if (lock == scompare1) {tmp = lock; lock = a0; a0 = tmp} else {a0 = lock} */
-    bnez        a0, .L_spinlock_loop            /* if (a0 != 0) {loop} :- Keep spinning until the spinlock is available */
+    /* Call the RTOS coprocessor exception hook */
+    call0   XT_RTOS_CP_EXC_HOOK
 
     /* Get co-processor state save area of new owner thread. */
     call0   XT_RTOS_CP_STATE                /* a15 = new owner's save area */
-    #if CONFIG_FREERTOS_FPU_IN_ISR
-    beqz    a15, .L_skip_core_pin           /* CP used in ISR, skip task pinning */
-    #else
+    #if !CONFIG_FREERTOS_FPU_IN_ISR
     beqz    a15, .L_goto_invalid            /* not in a thread (invalid) */
     #endif
-
-#if ( XCHAL_CP_NUM > 0 && configUSE_CORE_AFFINITY == 1 && configNUM_CORES > 1 )
-    /* CP operations are incompatible with unpinned tasks. Thus we pin the task
-    to the current running core. */
-    movi    a2, pxCurrentTCBs
-    getcoreid a3                            /* a3 = current core ID */
-    addx4   a2, a3, a2
-    l32i    a2, a2, 0                       /* a2 = start of pxCurrentTCBs[cpuid] */
-    movi    a4, offset_uxCoreAffinityMask
-    l32i    a4, a4, 0                       /* a4 = offset_uxCoreAffinityMask */
-    add     a2, a2, a4                      /* a2 = &TCB.uxCoreAffinityMask */
-    ssl     a3                              /* Use core ID as shift amount */
-    movi    a4, 1
-    sll     a4, a4                          /* a4 = uxCoreAffinityMask = (1 << core ID) */
-    s32i    a4, a2, 0                       /* Store affinity mask to TCB.uxCoreAffinityMask */
-#endif // ( XCHAL_CP_NUM > 0 && configUSE_CORE_AFFINITY == 1 && configNUM_CORES > 1 )
-
-#if CONFIG_FREERTOS_FPU_IN_ISR
-.L_skip_core_pin:
-#endif
 
     /* Enable the co-processor's bit in CPENABLE. */
     movi    a0, _xt_coproc_mask
@@ -978,17 +1029,18 @@ _xt_coproc_exc:
     or      a4, a4, a2                      /* a4 = CPENABLE | (1 << n) */
     wsr     a4, CPENABLE
 
-/*
-Keep loading _xt_coproc_owner_sa[n] atomic (=load once, then use that value
-everywhere): _xt_coproc_release assumes it works like this in order not to need
-locking.
-*/
-    /* Grab correct xt_coproc_owner_sa for this core */
+    /* Grab the xt_coproc_owner_sa owner array for current core */
     getcoreid a3                            /* a3 = current core ID */
-    movi    a2, XCHAL_CP_MAX << 2
-    mull    a2, a2, a3                      /* multiply by current processor id */
-    movi    a3, _xt_coproc_owner_sa         /* a3 = base of owner array */
-    add     a3, a3, a2                      /* a3 = owner area needed for this processor */
+    movi    a2, XCHAL_CP_MAX << 2           /* a2 = size of an owner array */
+    mull    a2, a2, a3                      /* a2 = offset to the owner array of the current core*/
+    movi    a3, _xt_coproc_owner_sa         /* a3 = base of all owner arrays */
+    add     a3, a3, a2                      /* a3 = base of owner array of the current core */
+
+#if portNUM_PROCESSORS > 1
+    /* If multicore, we must also acquire the _xt_coproc_owner_sa_lock spinlock
+     * to ensure thread safe access of _xt_coproc_owner_sa between cores. */
+    spinlock_take a0 a2 _xt_coproc_owner_sa_lock
+#endif /* portNUM_PROCESSORS > 1 */
 
     /* Get old coprocessor owner thread (save area ptr) and assign new one.  */
     addx4   a3,  a5, a3                      /* a3 = &_xt_coproc_owner_sa[n] */
@@ -996,13 +1048,21 @@ locking.
     s32i    a15, a3, 0                       /* _xt_coproc_owner_sa[n] = new */
     rsync                                    /* ensure wsr.CPENABLE is complete */
 
+#if portNUM_PROCESSORS > 1
+    /* Release previously taken spinlock */
+    spinlock_release a0 a2 _xt_coproc_owner_sa_lock
+#endif /* portNUM_PROCESSORS > 1 */
+
     /* Only need to context switch if new owner != old owner. */
     /* If float is necessary on ISR, we need to remove this check */
     /* below, because on restoring from ISR we may have new == old condition used
      * to force cp restore to next thread
+     * Todo: IDF-6418
      */
-    #ifndef CONFIG_FREERTOS_FPU_IN_ISR
-    beq     a15, a2, .L_goto_done           /* new owner == old, we're done */
+    #if !CONFIG_FREERTOS_FPU_IN_ISR
+    bne     a15, a2, .L_switch_context
+    j    .L_goto_done                       /* new owner == old, we're done */
+.L_switch_context:
     #endif
 
     /* If no old owner then nothing to save. */
@@ -1072,14 +1132,6 @@ locking.
     /* Restore interruptee's saved registers. */
     /* Can omit rsync for wsr.CPENABLE here because _xt_user_exit does it. */
 .L_xt_coproc_done:
-
-    /* Release spinlock */
-    movi        a2, _xt_coproc_owner_sa_lock    /* a2 = base address of the lock variable */
-    getcoreid   a0                              /* a0 = core ID to calculate the offset of the lock variable */
-    addx4       a2, a0, a2                      /* a2 = address of the lock variable */
-    movi        a0, 0                           /* a0 = 0 */
-    s32ri       a0, a2, 0                       /* a2 = a0 :- Write 0 to release the lock */
-
     l32i    a15, sp, XT_STK_A15
     l32i    a5,  sp, XT_STK_A5
     l32i    a4,  sp, XT_STK_A4
@@ -1107,14 +1159,6 @@ locking.
 
     /* Co-processor exception occurred outside a thread (not supported). */
 .L_xt_coproc_invalid:
-
-    /* Release spinlock */
-    movi        a2, _xt_coproc_owner_sa_lock    /* a2 = base address of the lock variable */
-    getcoreid   a0                              /* a0 = core ID to calculate the offset of the lock variable */
-    addx4       a2, a0, a2                      /* a2 = address of the lock variable */
-    movi        a0, 0                           /* a0 = 0 */
-    s32ri       a0, a2, 0                       /* a2 = a0 :- Write 0 to release the lock */
-
     movi    a0,PANIC_RSN_COPROCEXCEPTION
     wsr     a0,EXCCAUSE
     call0   _xt_panic                       /* not in a thread (invalid) */
@@ -1637,9 +1681,9 @@ the minimum necessary before jumping to the handler in the .text section.
 *******************************************************************************/
 
 /*
-These stubs just call xt_highintX/xt_nmi to handle the real interrupt. Please define
-these in an external assembly source file. If these symbols are not defined anywhere
-else, the defaults in xtensa_vector_defaults.S are used.
+Currently only shells for high priority interrupt handlers are provided
+here. However a template and example can be found in the Cadence Design Systems tools
+documentation: "Microprocessor Programmer's Guide".
 */
 
 #if XCHAL_NUM_INTLEVELS >=2 && XCHAL_EXCM_LEVEL <2 && XCHAL_DEBUGLEVEL !=2
@@ -1652,9 +1696,36 @@ else, the defaults in xtensa_vector_defaults.S are used.
     .align      4
 _Level2Vector:
     wsr     a0, EXCSAVE_2                   /* preserve a0 */
-    call0   xt_highint2                    /* load interrupt handler */
+    call0   xt_highint2                     /* load interrupt handler */
 
     .end        literal_prefix
+
+    .global     xt_highint2
+    .weak       xt_highint2
+    .set        xt_highint2, _xt_highint2
+    .section    .iram1, "ax"
+    .type       _xt_highint2,@function
+    .align      4
+_xt_highint2:
+
+    #ifdef XT_INTEXC_HOOKS
+    /* Call interrupt hook if present to (pre)handle interrupts. */
+    movi    a0, _xt_intexc_hooks
+    l32i    a0, a0, 2<<2
+    beqz    a0, 1f
+.Ln_xt_highint2_call_hook:
+    callx0  a0                              /* must NOT disturb stack! */
+1:
+    #endif
+
+    /* USER_EDIT:
+    ADD HIGH PRIORITY LEVEL 2 INTERRUPT HANDLER CODE HERE.
+    */
+
+    .align  4
+.L_xt_highint2_exit:
+    rsr     a0, EXCSAVE_2                   /* restore a0 */
+    rfi     2
 
 #endif  /* Level 2 */
 
@@ -1668,10 +1739,37 @@ _Level2Vector:
     .align      4
 _Level3Vector:
     wsr     a0, EXCSAVE_3                   /* preserve a0 */
-    call0   xt_highint3                    /* load interrupt handler */
+    call0   xt_highint3                     /* load interrupt handler */
     /* never returns here - call0 is used as a jump (see note at top) */
 
     .end        literal_prefix
+
+    .global     xt_highint3
+    .weak       xt_highint3
+    .set        xt_highint3, _xt_highint3
+    .section    .iram1, "ax"
+    .type       _xt_highint3,@function
+    .align      4
+_xt_highint3:
+
+    #ifdef XT_INTEXC_HOOKS
+    /* Call interrupt hook if present to (pre)handle interrupts. */
+    movi    a0, _xt_intexc_hooks
+    l32i    a0, a0, 3<<2
+    beqz    a0, 1f
+.Ln_xt_highint3_call_hook:
+    callx0  a0                              /* must NOT disturb stack! */
+1:
+    #endif
+
+    /* USER_EDIT:
+    ADD HIGH PRIORITY LEVEL 3 INTERRUPT HANDLER CODE HERE.
+    */
+
+    .align  4
+.L_xt_highint3_exit:
+    rsr     a0, EXCSAVE_3                   /* restore a0 */
+    rfi     3
 
 #endif  /* Level 3 */
 
@@ -1685,10 +1783,37 @@ _Level3Vector:
     .align      4
 _Level4Vector:
     wsr     a0, EXCSAVE_4                   /* preserve a0 */
-    call0   xt_highint4                    /* load interrupt handler */
+    call0   xt_highint4                     /* load interrupt handler */
     /* never returns here - call0 is used as a jump (see note at top) */
 
     .end        literal_prefix
+
+    .global     xt_highint4
+    .weak       xt_highint4
+    .set        xt_highint4, _xt_highint4
+    .section    .iram1, "ax"
+    .type       _xt_highint4,@function
+    .align      4
+_xt_highint4:
+
+    #ifdef XT_INTEXC_HOOKS
+    /* Call interrupt hook if present to (pre)handle interrupts. */
+    movi    a0, _xt_intexc_hooks
+    l32i    a0, a0, 4<<2
+    beqz    a0, 1f
+.Ln_xt_highint4_call_hook:
+    callx0  a0                              /* must NOT disturb stack! */
+1:
+    #endif
+
+    /* USER_EDIT:
+    ADD HIGH PRIORITY LEVEL 4 INTERRUPT HANDLER CODE HERE.
+    */
+
+    .align  4
+.L_xt_highint4_exit:
+    rsr     a0, EXCSAVE_4                   /* restore a0 */
+    rfi     4
 
 #endif  /* Level 4 */
 
@@ -1707,6 +1832,33 @@ _Level5Vector:
 
     .end        literal_prefix
 
+    .global     xt_highint5
+    .weak       xt_highint5
+    .set        xt_highint5, _xt_highint5
+    .section    .iram1, "ax"
+    .type       _xt_highint5,@function
+    .align      4
+_xt_highint5:
+
+    #ifdef XT_INTEXC_HOOKS
+    /* Call interrupt hook if present to (pre)handle interrupts. */
+    movi    a0, _xt_intexc_hooks
+    l32i    a0, a0, 5<<2
+    beqz    a0, 1f
+.Ln_xt_highint5_call_hook:
+    callx0  a0                              /* must NOT disturb stack! */
+1:
+    #endif
+
+    /* USER_EDIT:
+    ADD HIGH PRIORITY LEVEL 5 INTERRUPT HANDLER CODE HERE.
+    */
+
+    .align  4
+.L_xt_highint5_exit:
+    rsr     a0, EXCSAVE_5                   /* restore a0 */
+    rfi     5
+
 #endif  /* Level 5 */
 
 #if XCHAL_NUM_INTLEVELS >=6 && XCHAL_EXCM_LEVEL <6 && XCHAL_DEBUGLEVEL !=6
@@ -1724,6 +1876,33 @@ _Level6Vector:
 
     .end        literal_prefix
 
+    .global     xt_highint6
+    .weak       xt_highint6
+    .set        xt_highint6, _xt_highint6
+    .section    .iram1, "ax"
+    .type       _xt_highint6,@function
+    .align      4
+_xt_highint6:
+
+    #ifdef XT_INTEXC_HOOKS
+    /* Call interrupt hook if present to (pre)handle interrupts. */
+    movi    a0, _xt_intexc_hooks
+    l32i    a0, a0, 6<<2
+    beqz    a0, 1f
+.Ln_xt_highint6_call_hook:
+    callx0  a0                              /* must NOT disturb stack! */
+1:
+    #endif
+
+    /* USER_EDIT:
+    ADD HIGH PRIORITY LEVEL 6 INTERRUPT HANDLER CODE HERE.
+    */
+
+    .align  4
+.L_xt_highint6_exit:
+    rsr     a0, EXCSAVE_6                   /* restore a0 */
+    rfi     6
+
 #endif  /* Level 6 */
 
 #if XCHAL_HAVE_NMI
@@ -1735,11 +1914,38 @@ _Level6Vector:
     .global     xt_nmi
     .align      4
 _NMIExceptionVector:
-    wsr     a0, EXCSAVE + XCHAL_NMILEVEL  _ /* preserve a0 */
+    wsr     a0, EXCSAVE + XCHAL_NMILEVEL   /* preserve a0 */
     call0   xt_nmi                         /* load interrupt handler */
     /* never returns here - call0 is used as a jump (see note at top) */
 
     .end        literal_prefix
+
+    .global     xt_nmi
+    .weak       xt_nmi
+    .set        xt_nmi, _xt_nmi
+    .section    .iram1, "ax"
+    .type       _xt_nmi,@function
+    .align      4
+_xt_nmi:
+
+    #ifdef XT_INTEXC_HOOKS
+    /* Call interrupt hook if present to (pre)handle interrupts. */
+    movi    a0, _xt_intexc_hooks
+    l32i    a0, a0, XCHAL_NMILEVEL<<2
+    beqz    a0, 1f
+.Ln_xt_nmi_call_hook:
+    callx0  a0                              /* must NOT disturb stack! */
+1:
+    #endif
+
+    /* USER_EDIT:
+    ADD HIGH PRIORITY NON-MASKABLE INTERRUPT (NMI) HANDLER CODE HERE.
+    */
+
+    .align  4
+.L_xt_nmi_exit:
+    rsr     a0, EXCSAVE + XCHAL_NMILEVEL    /* restore a0 */
+    rfi     XCHAL_NMILEVEL
 
 #endif  /* NMI */
 
@@ -1856,9 +2062,9 @@ _xt_alloca_exc:
     wsr     a2, PS          /* update PS.OWB to new window base */
     rsync
 
-    _bbci.l a4, 31, _WindowUnderflow4
+    bbci.l a4, 31, _WindowUnderflow4
     rotw    -1              /* original a0 goes to a8 */
-    _bbci.l a8, 30, _WindowUnderflow8
+    bbci.l a8, 30, _WindowUnderflow8
     rotw    -1
     j               _WindowUnderflow12
 

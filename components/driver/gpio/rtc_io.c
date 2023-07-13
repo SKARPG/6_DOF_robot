@@ -194,7 +194,6 @@ esp_err_t rtc_gpio_force_hold_dis_all(void)
 
     return ESP_OK;
 }
-
 #endif // SOC_RTCIO_HOLD_SUPPORTED
 
 #if SOC_RTCIO_WAKE_SUPPORTED
