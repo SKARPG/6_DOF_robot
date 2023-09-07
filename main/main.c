@@ -59,21 +59,27 @@ void app_main(void)
 
     while (1)
     {
-        if (speed >= 100 || speed <= -100)
+        if (speed >= 250 || speed <= -250)
             dir = -dir;
 
-        speed = speed + 10 * dir;
+        speed = speed + 50 * dir;
         ESP_LOGI(TAG, "speed: %d\n", speed);
 
+        accel = 255;
         emm42_servo_uart_move(emm42_conf, 1, speed, accel, pulses);
-        ESP_LOGI(TAG, "l_enc: %f\n", emm42_servo_uart_read_encoder(emm42_conf, 1));
-        ESP_LOGI(TAG, "g_enc: %f\n", emm42_servo_uart_read_motor_pos(emm42_conf, 1));
+        vTaskDelay(10 / portTICK_PERIOD_MS);
 
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-
+        accel = 32;
         mks_servo_uart_cr_set_pos(mks_conf, 2, speed, accel, pulses);
-        ESP_LOGI(TAG, "g_enc: %f\n", mks_servo_uart_read_encoder(mks_conf, 2));
+        vTaskDelay(10 / portTICK_PERIOD_MS);
 
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
+
+        // ESP_LOGI(TAG, "emm42 l_enc: %f\n", emm42_servo_uart_read_encoder(emm42_conf, 1));
+        ESP_LOGI(TAG, "emm42 g_enc: %f\n", emm42_servo_uart_read_motor_pos(emm42_conf, 1));
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+
+        ESP_LOGI(TAG, "mks g_enc: %f\n", mks_servo_uart_read_encoder(mks_conf, 2));
+        vTaskDelay(10 / portTICK_PERIOD_MS);
     }
 }
