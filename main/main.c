@@ -49,37 +49,50 @@ void app_main(void)
         .en_pin = mks_en_pin
     };
 
-    motor_init(AX_conf, emm42_conf, mks_conf);
+    float motor_pos[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+
+    motor_init(AX_conf, emm42_conf, mks_conf, motor_pos);
 
     int16_t speed = 0;
-    uint8_t accel = 255;
-    uint32_t pulses = 10 * FULL_ROT;
+    uint8_t accel = 0;
+    uint32_t pulses = FULL_ROT;
 
     int16_t dir = 1;
 
     while (1)
     {
-        if (speed >= 250 || speed <= -250)
+        if (speed >= 1279 || speed <= -1279)
             dir = -dir;
 
         speed = speed + 50 * dir;
         ESP_LOGI(TAG, "speed: %d\n", speed);
 
-        accel = 255;
+        // ======================================================================
+
         emm42_servo_uart_move(emm42_conf, 1, speed, accel, pulses);
         vTaskDelay(10 / portTICK_PERIOD_MS);
 
-        accel = 32;
-        mks_servo_uart_cr_set_pos(mks_conf, 2, speed, accel, pulses);
+        if (speed != 0)
+            motor_pos[0] -=  speed/abs(speed) * 360.0f;
+        wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
+
+        ESP_LOGI(TAG, "emm42 g_enc: %f\n", get_motor_pos(AX_conf, emm42_conf, mks_conf, 0));
         vTaskDelay(10 / portTICK_PERIOD_MS);
 
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-        // ESP_LOGI(TAG, "emm42 l_enc: %f\n", emm42_servo_uart_read_encoder(emm42_conf, 1));
-        ESP_LOGI(TAG, "emm42 g_enc: %f\n", emm42_servo_uart_read_motor_pos(emm42_conf, 1));
+        // ======================================================================
+
+        emm42_servo_uart_move(emm42_conf, 1, -speed, accel, pulses);
         vTaskDelay(10 / portTICK_PERIOD_MS);
 
-        ESP_LOGI(TAG, "mks g_enc: %f\n", mks_servo_uart_read_encoder(mks_conf, 2));
+        if (speed != 0)
+            motor_pos[0] += speed/abs(speed) * 360.0f;
+        wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
+
+        ESP_LOGI(TAG, "emm42 g_enc: %f\n", get_motor_pos(AX_conf, emm42_conf, mks_conf, 0));
         vTaskDelay(10 / portTICK_PERIOD_MS);
+
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
