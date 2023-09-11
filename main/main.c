@@ -53,23 +53,23 @@ void app_main(void)
 
     motor_init(AX_conf, emm42_conf, mks_conf, motor_pos);
 
-    int16_t speed = 0;
-    uint32_t pulses = FULL_ROT;
+    int16_t speed = 79;
+    float pos = 180.0f;
 
-    int16_t dir = 1;
+    float dir = 1.0f;
 
     while (1)
     {
-        if (speed >= 1279 || speed <= -1279)
+        if (speed >= 1279 || speed <= 0)
             dir = -dir;
 
-        speed = speed + 50 * dir;
+        speed = speed + 100.0f * dir;
         ESP_LOGI(TAG, "speed: %d\n", speed);
 
         // ======================================================================
 
-        single_DOF_move(AX_conf, emm42_conf, mks_conf, 0, pulses, speed, motor_pos);
-        single_DOF_move(AX_conf, emm42_conf, mks_conf, 1, pulses, speed, motor_pos);
+        single_DOF_move(AX_conf, emm42_conf, mks_conf, 0, pos, speed, motor_pos);
+        single_DOF_move(AX_conf, emm42_conf, mks_conf, 1, pos, speed, motor_pos);
         wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
 
         ESP_LOGI(TAG, "emm42 g_enc: %f\n", get_motor_pos(AX_conf, emm42_conf, mks_conf, 0));
@@ -77,15 +77,15 @@ void app_main(void)
 
         vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-        // // ======================================================================
+        // ======================================================================
 
-        // single_DOF_move(AX_conf, emm42_conf, mks_conf, 0, pulses, -speed, motor_pos);
-        // single_DOF_move(AX_conf, emm42_conf, mks_conf, 1, pulses, -speed, motor_pos);
-        // wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
+        single_DOF_move(AX_conf, emm42_conf, mks_conf, 0, -pos, speed, motor_pos);
+        single_DOF_move(AX_conf, emm42_conf, mks_conf, 1, -pos, speed, motor_pos);
+        wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
 
-        // ESP_LOGI(TAG, "emm42 g_enc: %f\n", get_motor_pos(AX_conf, emm42_conf, mks_conf, 0));
-        // ESP_LOGI(TAG, "mks g_enc: %f\n", get_motor_pos(AX_conf, emm42_conf, mks_conf, 1));
+        ESP_LOGI(TAG, "emm42 g_enc: %f\n", get_motor_pos(AX_conf, emm42_conf, mks_conf, 0));
+        ESP_LOGI(TAG, "mks g_enc: %f\n", get_motor_pos(AX_conf, emm42_conf, mks_conf, 1));
 
-        // vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
