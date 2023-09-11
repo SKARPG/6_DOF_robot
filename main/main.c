@@ -54,7 +54,6 @@ void app_main(void)
     motor_init(AX_conf, emm42_conf, mks_conf, motor_pos);
 
     int16_t speed = 0;
-    uint8_t accel = 0;
     uint32_t pulses = FULL_ROT;
 
     int16_t dir = 1;
@@ -69,30 +68,24 @@ void app_main(void)
 
         // ======================================================================
 
-        emm42_servo_uart_move(emm42_conf, 1, speed, accel, pulses);
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-
-        if (speed != 0)
-            motor_pos[0] -=  speed/abs(speed) * 360.0f;
+        single_DOF_move(AX_conf, emm42_conf, mks_conf, 0, pulses, speed, motor_pos);
+        single_DOF_move(AX_conf, emm42_conf, mks_conf, 1, pulses, speed, motor_pos);
         wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
 
         ESP_LOGI(TAG, "emm42 g_enc: %f\n", get_motor_pos(AX_conf, emm42_conf, mks_conf, 0));
-        vTaskDelay(10 / portTICK_PERIOD_MS);
+        ESP_LOGI(TAG, "mks g_enc: %f\n", get_motor_pos(AX_conf, emm42_conf, mks_conf, 1));
 
         vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-        // ======================================================================
+        // // ======================================================================
 
-        emm42_servo_uart_move(emm42_conf, 1, -speed, accel, pulses);
-        vTaskDelay(10 / portTICK_PERIOD_MS);
+        // single_DOF_move(AX_conf, emm42_conf, mks_conf, 0, pulses, -speed, motor_pos);
+        // single_DOF_move(AX_conf, emm42_conf, mks_conf, 1, pulses, -speed, motor_pos);
+        // wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
 
-        if (speed != 0)
-            motor_pos[0] += speed/abs(speed) * 360.0f;
-        wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
+        // ESP_LOGI(TAG, "emm42 g_enc: %f\n", get_motor_pos(AX_conf, emm42_conf, mks_conf, 0));
+        // ESP_LOGI(TAG, "mks g_enc: %f\n", get_motor_pos(AX_conf, emm42_conf, mks_conf, 1));
 
-        ESP_LOGI(TAG, "emm42 g_enc: %f\n", get_motor_pos(AX_conf, emm42_conf, mks_conf, 0));
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        // vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
