@@ -6,12 +6,13 @@
     * EMM42_POS_TRESHOLD - emm42 servo position treshold,
     * MKS_POS_TRESHOLD - MKS servo position treshold,
     * AX_POS_TRESHOLD - AX servo position treshold.
-* Acceleration is set to 0 for all motors by default (see `single_DOF_move()` in `motor_move.c`).
+* Acceleration can be changed in `motor_move.h` (see `EMM42_ACCEL` and `MKS_ACCEL`). For now it is disabled.
+* Gearbox ratio can be changed in `motor_move.h` (see `GEAR_RATIO`).
 
 ## To do list:
 * debug and test
-* normilize speeds among all motors
-* add convertion from position to degrees for AX servos (see `get_motor_pos()` in `motor_move.c`)
+* decide what to do with acceleration
+* homing function
 
 ## Sources
 https://github.com/JanG175/6_DOF_robot/tree/450f79c7eb65cb54c5a698a6c0e79beca74c9bbc/components/motor_move

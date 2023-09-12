@@ -53,17 +53,18 @@ void app_main(void)
 
     motor_init(AX_conf, emm42_conf, mks_conf, motor_pos);
 
-    int16_t speed = 79;
-    float pos = 180.0f;
+    int16_t max_speed = 1600;
+    int16_t speed = 0;
+    float pos = 720.0f;
 
-    float dir = 1.0f;
+    int16_t dir = -1;
 
     while (1)
     {
-        if (speed >= 1279 || speed <= 0)
+        if (speed >= 10 || speed <= 0)
             dir = -dir;
 
-        speed = speed + 100.0f * dir;
+        speed = speed + 5 * dir;
         ESP_LOGI(TAG, "speed: %d\n", speed);
 
         // ======================================================================

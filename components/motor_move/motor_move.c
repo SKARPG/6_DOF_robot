@@ -52,6 +52,12 @@ float get_motor_pos(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t
 
     vTaskDelay(10 / portTICK_PERIOD_MS);
 
+    // convert servo position to degrees
+    if (DOF == 0 || DOF == 1 || DOF == 2)
+        position = position / (float)GEAR_RATIO;
+    else if (DOF == 3 || DOF == 4 || DOF == 5)
+        position = position / 1023.0f * 300.0f;
+
     return position;
 }
 
@@ -77,6 +83,7 @@ void wait_for_motors_stop(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_
     {
         for (uint32_t i = 0; i < MOTORS_NUM; i++)
         {
+            // set acceptable position error
             if (i == 0 || i == 2)
                 pos_tresh = EMM42_POS_TRESHOLD;
             else if (i == 1)
@@ -106,6 +113,8 @@ void wait_for_motors_stop(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_
         }
     }
 
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+
     // prevent position error accumulation
     for (uint32_t i = 0; i < MOTORS_NUM; i++)
         motor_goal[i] = get_motor_pos(AX_conf, emm42_conf, mks_conf, i);
@@ -120,48 +129,52 @@ void wait_for_motors_stop(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_
  * @param mks_conf struct with mks servo parameters
  * @param DOF number of DOF
  * @param position desired position in degrees
- * @param speed speed (must be positive value)
+ * @param speed_percent percent of speed (0 - 100 %)
  * @param motor_pos array with current positions for each motor in degrees
  */
-void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t mks_conf, uint8_t DOF, float position, int16_t speed, float* motor_pos)
+void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t mks_conf, uint8_t DOF, float position, uint8_t speed_percent, float* motor_pos)
 {
-    uint8_t accel = 0;
-
     uint32_t pulses = 0;
     uint16_t AX_pos = 0;
+
+    int16_t speed = 0;
+
+    if (speed > 100)
+    {
+        ESP_LOGW(TAG, "too high speed!");
+        speed = 100;
+    }
 
     // CW orientation
     if (DOF == 1)
         position = -position;
 
-    // speed cannot be negative value
-    if (speed < 0)
-    {
-        ESP_LOGW(TAG, "negative speed!");
-        speed = 0;
-    }
-
     if (DOF == 0 || DOF == 1 || DOF == 2)
     {
+        speed = (int16_t)((float)speed_percent / 100.0f * 1279.0f);
+
         // convert position in degrees to pulses
-        pulses = (uint32_t)(fabs(position - motor_pos[DOF]) / 360.0f * (float)FULL_ROT);
+        pulses = (uint32_t)(fabs(position - motor_pos[DOF]) / 360.0f * (float)FULL_ROT) * GEAR_RATIO;
 
         if (position > motor_pos[DOF])
             speed = -speed;
     }
     else if (DOF == 3 || DOF == 4 || DOF == 5)
     {
-        AX_pos = (uint16_t)(position / 360.0f * 1024.0f);
+        speed = (int16_t)((float)speed_percent / 100.0f * 1023.0f);
+
+        // convert position in degrees to AX servo position
+        AX_pos = (uint16_t)(position / 300.0f * 1023.0f);
 
         if (AX_pos > 1023)
         {
-            ESP_LOGW(TAG, "too high position!");
+            ESP_LOGW(TAG, "AX servo: too high position!");
             AX_pos = 1023;
         }
 
         if (speed > 1023)
         {
-            ESP_LOGW(TAG, "too high speed!");
+            ESP_LOGW(TAG, "AX servo: too high speed!");
             speed = 1023;
         }
     }
@@ -169,13 +182,13 @@ void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_
     switch (DOF)
     {
         case 0:
-            emm42_servo_uart_move(emm42_conf, 1, speed, accel, pulses);
+            emm42_servo_uart_move(emm42_conf, 1, speed, EMM42_ACCEL, pulses);
             break;
         case 1:
-            mks_servo_uart_cr_set_pos(mks_conf, 2, speed, accel, pulses);
+            mks_servo_uart_cr_set_pos(mks_conf, 2, speed, MKS_ACCEL, pulses);
             break;
         case 2:
-            emm42_servo_uart_move(emm42_conf, 3, speed, accel, pulses);
+            emm42_servo_uart_move(emm42_conf, 3, speed, EMM42_ACCEL, pulses);
             break;
         case 3:
             AX_servo_set_pos_w_spd(AX_conf, 4, AX_pos, speed);
@@ -194,14 +207,16 @@ void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_
     vTaskDelay(10 / portTICK_PERIOD_MS);
 
     // update goal position
-    if (DOF == 0 || DOF == 1 || DOF == 2)
+    if (speed != 0)
     {
-        if (speed != 0)
-            motor_pos[DOF] -= (float)(speed/abs(speed)) * (float)pulses / (float)FULL_ROT * 360.0f;
-    }
-    else if (DOF == 3 || DOF == 4 || DOF == 5)
-    {
-        vTaskDelay(1); // TODO !!!
+        if (DOF == 0 || DOF == 1 || DOF == 2)
+        {
+            motor_pos[DOF] -= (float)(speed/abs(speed)) * (float)pulses / (float)FULL_ROT * 360.0f / (float)GEAR_RATIO;
+        }
+        else if (DOF == 3 || DOF == 4 || DOF == 5)
+        {
+            motor_pos[DOF] = (float)AX_pos / 1023.0f * 300.0f;
+        }
     }
 }
 
