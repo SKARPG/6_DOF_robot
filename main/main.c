@@ -49,23 +49,31 @@ void app_main(void)
         .en_pin = mks_en_pin
     };
 
-    float motor_pos[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    float motor_pos[MOTORS_NUM];
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        motor_pos[i] = 0.0f;
 
     motor_init(AX_conf, emm42_conf, mks_conf, motor_pos);
 
-    int16_t max_speed = 1600;
-    int16_t speed = 0;
-    float pos = 720.0f;
+    int16_t max_speed = 100;
+    int16_t speed = 25;
+    float pos = 0.0f;
 
     int16_t dir = -1;
 
     while (1)
     {
-        if (speed >= 10 || speed <= 0)
+        // if (speed >= max_speed || speed <= 0)
+        //     dir = -dir;
+
+        // speed = speed + 5 * dir;
+        // ESP_LOGI(TAG, "speed: %d\n", speed);
+
+        if (pos >= 180.0f || pos <= 0.0f)
             dir = -dir;
 
-        speed = speed + 5 * dir;
-        ESP_LOGI(TAG, "speed: %d\n", speed);
+        pos += (float)dir;
+        ESP_LOGI(TAG, "pos: %f\n", pos);
 
         // ======================================================================
 
@@ -73,10 +81,11 @@ void app_main(void)
         single_DOF_move(AX_conf, emm42_conf, mks_conf, 1, pos, speed, motor_pos);
         wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
 
-        ESP_LOGI(TAG, "emm42 g_enc: %f\n", get_motor_pos(AX_conf, emm42_conf, mks_conf, 0));
-        ESP_LOGI(TAG, "mks g_enc: %f\n", get_motor_pos(AX_conf, emm42_conf, mks_conf, 1));
+        for (uint8_t i = 0; i < MOTORS_NUM; i++)
+            ESP_LOGI(TAG, "motor %d pos: %f\n", i, motor_pos[i]);
+        ESP_LOGI(TAG, "==================================================");
 
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
 
         // ======================================================================
 
@@ -84,9 +93,10 @@ void app_main(void)
         single_DOF_move(AX_conf, emm42_conf, mks_conf, 1, -pos, speed, motor_pos);
         wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
 
-        ESP_LOGI(TAG, "emm42 g_enc: %f\n", get_motor_pos(AX_conf, emm42_conf, mks_conf, 0));
-        ESP_LOGI(TAG, "mks g_enc: %f\n", get_motor_pos(AX_conf, emm42_conf, mks_conf, 1));
+        for (uint8_t i = 0; i < MOTORS_NUM; i++)
+            ESP_LOGI(TAG, "motor %d pos: %f\n", i, motor_pos[i]);
+        ESP_LOGI(TAG, "==================================================");
 
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
     }
 }

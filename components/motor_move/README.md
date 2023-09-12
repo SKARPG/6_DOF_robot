@@ -8,11 +8,14 @@
     * AX_POS_TRESHOLD - AX servo position treshold.
 * Acceleration can be changed in `motor_move.h` (see `EMM42_ACCEL` and `MKS_ACCEL`). For now it is disabled.
 * Gearbox ratio can be changed in `motor_move.h` (see `GEAR_RATIO`).
+* Sometimes when multiple motors are running at the same time, there is an UART error (it is fixed by resending the command).
 
 ## To do list:
 * debug and test
 * decide what to do with acceleration
 * homing function
+* saving position after power off
+* normalize servos velocities
 
 ## Sources
 https://github.com/JanG175/6_DOF_robot/tree/450f79c7eb65cb54c5a698a6c0e79beca74c9bbc/components/motor_move

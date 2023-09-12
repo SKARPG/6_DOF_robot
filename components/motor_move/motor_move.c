@@ -31,7 +31,7 @@ float get_motor_pos(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t
             position = emm42_servo_uart_read_motor_pos(emm42_conf, 1);
             break;
         case 1:
-            position = mks_servo_uart_read_encoder(mks_conf, 2);
+            position = -mks_servo_uart_read_encoder(mks_conf, 2); // CW orientation
             break;
         case 2:
             position = emm42_servo_uart_read_motor_pos(emm42_conf, 3);
@@ -113,9 +113,9 @@ void wait_for_motors_stop(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_
         }
     }
 
-    vTaskDelay(10 / portTICK_PERIOD_MS);
-
     // prevent position error accumulation
+    vTaskDelay(25 / portTICK_PERIOD_MS);
+
     for (uint32_t i = 0; i < MOTORS_NUM; i++)
         motor_goal[i] = get_motor_pos(AX_conf, emm42_conf, mks_conf, i);
 }
@@ -145,10 +145,6 @@ void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_
         speed = 100;
     }
 
-    // CW orientation
-    if (DOF == 1)
-        position = -position;
-
     if (DOF == 0 || DOF == 1 || DOF == 2)
     {
         speed = (int16_t)((float)speed_percent / 100.0f * 1279.0f);
@@ -156,8 +152,17 @@ void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_
         // convert position in degrees to pulses
         pulses = (uint32_t)(fabs(position - motor_pos[DOF]) / 360.0f * (float)FULL_ROT) * GEAR_RATIO;
 
-        if (position > motor_pos[DOF])
-            speed = -speed;
+        // CW orientation
+        if (DOF == 1)
+        {
+            if (position < motor_pos[DOF])
+                speed = -speed;
+        }
+        else
+        {
+            if (position > motor_pos[DOF])
+                speed = -speed;
+        }
     }
     else if (DOF == 3 || DOF == 4 || DOF == 5)
     {
@@ -209,9 +214,13 @@ void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_
     // update goal position
     if (speed != 0)
     {
-        if (DOF == 0 || DOF == 1 || DOF == 2)
+        if (DOF == 0 || DOF == 2)
         {
             motor_pos[DOF] -= (float)(speed/abs(speed)) * (float)pulses / (float)FULL_ROT * 360.0f / (float)GEAR_RATIO;
+        }
+        else if (DOF == 1) // CW orientation
+        {
+            motor_pos[DOF] += (float)(speed/abs(speed)) * (float)pulses / (float)FULL_ROT * 360.0f / (float)GEAR_RATIO;
         }
         else if (DOF == 3 || DOF == 4 || DOF == 5)
         {
