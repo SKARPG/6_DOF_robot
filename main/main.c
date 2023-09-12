@@ -71,7 +71,6 @@ void app_main(void)
 
         if (pos >= 180.0f || pos <= 0.0f)
             dir = -dir;
-
         pos += (float)dir;
         ESP_LOGI(TAG, "pos: %f\n", pos);
 
@@ -89,14 +88,14 @@ void app_main(void)
 
         // ======================================================================
 
-        single_DOF_move(AX_conf, emm42_conf, mks_conf, 0, -pos, speed, motor_pos);
-        single_DOF_move(AX_conf, emm42_conf, mks_conf, 1, -pos, speed, motor_pos);
-        wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
+        // single_DOF_move(AX_conf, emm42_conf, mks_conf, 0, -pos, speed, motor_pos);
+        // single_DOF_move(AX_conf, emm42_conf, mks_conf, 1, -pos, speed, motor_pos);
+        // wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
 
-        for (uint8_t i = 0; i < MOTORS_NUM; i++)
-            ESP_LOGI(TAG, "motor %d pos: %f\n", i, motor_pos[i]);
-        ESP_LOGI(TAG, "==================================================");
+        // for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        //     ESP_LOGI(TAG, "motor %d pos: %f\n", i, motor_pos[i]);
+        // ESP_LOGI(TAG, "==================================================");
 
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+        // vTaskDelay(100 / portTICK_PERIOD_MS);
     }
 }

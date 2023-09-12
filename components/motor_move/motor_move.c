@@ -37,13 +37,13 @@ float get_motor_pos(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t
             position = emm42_servo_uart_read_motor_pos(emm42_conf, 3);
             break;
         case 3:
-            position = (float)AX_servo_get_pos(AX_conf, 4);
+            position = (float)AX_servo_get_pos(AX_conf, 14);
             break;
         case 4:
-            position = (float)AX_servo_get_pos(AX_conf, 5);
+            position = (float)AX_servo_get_pos(AX_conf, 1);
             break;
         case 5:
-            position = (float)AX_servo_get_pos(AX_conf, 6);
+            position = (float)AX_servo_get_pos(AX_conf, 4);
             break;
         default:
             ESP_LOGW(TAG, "invalid DOF");
@@ -196,13 +196,13 @@ void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_
             emm42_servo_uart_move(emm42_conf, 3, speed, EMM42_ACCEL, pulses);
             break;
         case 3:
-            AX_servo_set_pos_w_spd(AX_conf, 4, AX_pos, speed);
+            AX_servo_set_pos_w_spd(AX_conf, 14, AX_pos, speed);
             break;
         case 4:
-            AX_servo_set_pos_w_spd(AX_conf, 5, AX_pos, speed);
+            AX_servo_set_pos_w_spd(AX_conf, 1, AX_pos, speed);
             break;
         case 5:
-            AX_servo_set_pos_w_spd(AX_conf, 6, AX_pos, speed);
+            AX_servo_set_pos_w_spd(AX_conf, 4, AX_pos, speed);
             break;
         default:
             ESP_LOGW(TAG, "invalid DOF!");

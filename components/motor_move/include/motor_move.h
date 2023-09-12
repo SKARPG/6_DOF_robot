@@ -19,8 +19,8 @@
 
 #define MOTORS_NUM 2 // number of motors // CHANGE LATER !!!
 
-#define EMM42_POS_TRESHOLD 3.6f // emm42 servo position treshold
-#define MKS_POS_TRESHOLD 3.6f // MKS servo position treshold
+#define EMM42_POS_TRESHOLD 1.8f // emm42 servo position treshold
+#define MKS_POS_TRESHOLD 1.8f // MKS servo position treshold
 #define AX_POS_TRESHOLD 1.0f // AX servo position treshold
 
 #define FULL_ROT 200 // full rotation of motor in steps

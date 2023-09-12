@@ -9,6 +9,7 @@
 * Acceleration can be changed in `motor_move.h` (see `EMM42_ACCEL` and `MKS_ACCEL`). For now it is disabled.
 * Gearbox ratio can be changed in `motor_move.h` (see `GEAR_RATIO`).
 * Sometimes when multiple motors are running at the same time, there is an UART error (it is fixed by resending the command).
+* All motors got CW orientation (positive angle is clockwise).
 
 ## To do list:
 * debug and test
