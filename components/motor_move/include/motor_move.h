@@ -17,7 +17,7 @@
 #include "mks_servo.h"
 #include "emm42_servo.h"
 
-#define MOTORS_NUM 2 // number of motors // CHANGE LATER !!!
+#define MOTORS_NUM 6 // number of motors // CHANGE LATER !!!
 
 #define EMM42_POS_TRESHOLD 1.8f // emm42 servo position treshold
 #define MKS_POS_TRESHOLD 1.8f // MKS servo position treshold
@@ -28,6 +28,8 @@
 
 #define EMM42_ACCEL 255 // emm42 servo acceleration
 #define MKS_ACCEL 0 // MKS servo acceleration
+
+#define UART_WAIT (10 / portTICK_PERIOD_MS) // UART wait time
 
 
 float get_motor_pos(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t mks_conf, uint8_t DOF);

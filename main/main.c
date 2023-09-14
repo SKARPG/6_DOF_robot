@@ -14,10 +14,10 @@ static const char *TAG = "main";
 void app_main(void)
 {
     AX_servo_conf_t AX_conf = {
-        .uart = UART_NUM_0,
-        .tx_pin = 1,
-        .rx_pin = 3,
-        .rts_pin = 5,
+        .uart = UART_NUM_2,
+        .tx_pin = 17,
+        .rx_pin = 16,
+        .rts_pin = 15,
         .baudrate = 115200
     };
 
@@ -61,6 +61,10 @@ void app_main(void)
 
     int16_t dir = -1;
 
+    single_DOF_move(AX_conf, emm42_conf, mks_conf, 3, 150, speed, motor_pos);
+    single_DOF_move(AX_conf, emm42_conf, mks_conf, 4, 150, speed, motor_pos);
+    single_DOF_move(AX_conf, emm42_conf, mks_conf, 5, 150, speed, motor_pos);
+
     while (1)
     {
         // if (speed >= max_speed || speed <= 0)
@@ -88,14 +92,14 @@ void app_main(void)
 
         // ======================================================================
 
-        // single_DOF_move(AX_conf, emm42_conf, mks_conf, 0, -pos, speed, motor_pos);
-        // single_DOF_move(AX_conf, emm42_conf, mks_conf, 1, -pos, speed, motor_pos);
-        // wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
+        single_DOF_move(AX_conf, emm42_conf, mks_conf, 0, -pos, speed, motor_pos);
+        single_DOF_move(AX_conf, emm42_conf, mks_conf, 1, -pos, speed, motor_pos);
+        wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
 
-        // for (uint8_t i = 0; i < MOTORS_NUM; i++)
-        //     ESP_LOGI(TAG, "motor %d pos: %f\n", i, motor_pos[i]);
-        // ESP_LOGI(TAG, "==================================================");
+        for (uint8_t i = 0; i < MOTORS_NUM; i++)
+            ESP_LOGI(TAG, "motor %d pos: %f\n", i, motor_pos[i]);
+        ESP_LOGI(TAG, "==================================================");
 
-        // vTaskDelay(100 / portTICK_PERIOD_MS);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
     }
 }

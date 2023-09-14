@@ -34,23 +34,23 @@ float get_motor_pos(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t
             position = -mks_servo_uart_read_encoder(mks_conf, 2); // CW orientation
             break;
         case 2:
-            position = emm42_servo_uart_read_motor_pos(emm42_conf, 3);
+            // position = emm42_servo_uart_read_motor_pos(emm42_conf, 3);
             break;
         case 3:
-            position = (float)AX_servo_get_pos(AX_conf, 14);
+            position = (float)AX_servo_get_pos(AX_conf, 4);
             break;
         case 4:
-            position = (float)AX_servo_get_pos(AX_conf, 1);
+            position = (float)AX_servo_get_pos(AX_conf, 5);
             break;
         case 5:
-            position = (float)AX_servo_get_pos(AX_conf, 4);
+            position = (float)AX_servo_get_pos(AX_conf, 6);
             break;
         default:
             ESP_LOGW(TAG, "invalid DOF");
             break;
     }
 
-    vTaskDelay(10 / portTICK_PERIOD_MS);
+    vTaskDelay(UART_WAIT);
 
     // convert servo position to degrees
     if (DOF == 0 || DOF == 1 || DOF == 2)
@@ -96,7 +96,7 @@ void wait_for_motors_stop(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_
             else
                 motor_stop[i] = false;
 
-            // printf("%f\n", get_motor_pos(AX_conf, emm42_conf, mks_conf, i) - motor_goal[i]); // for debug
+            // printf("%lu\t%f\n", i, get_motor_pos(AX_conf, emm42_conf, mks_conf, i) - motor_goal[i]); // for debug
         }
 
         // printf("\n"); // for debug
@@ -193,23 +193,23 @@ void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_
             mks_servo_uart_cr_set_pos(mks_conf, 2, speed, MKS_ACCEL, pulses);
             break;
         case 2:
-            emm42_servo_uart_move(emm42_conf, 3, speed, EMM42_ACCEL, pulses);
+            // emm42_servo_uart_move(emm42_conf, 3, speed, EMM42_ACCEL, pulses);
             break;
         case 3:
-            AX_servo_set_pos_w_spd(AX_conf, 14, AX_pos, speed);
+            AX_servo_set_pos_w_spd(AX_conf, 4, AX_pos, speed);
             break;
         case 4:
-            AX_servo_set_pos_w_spd(AX_conf, 1, AX_pos, speed);
+            AX_servo_set_pos_w_spd(AX_conf, 5, AX_pos, speed);
             break;
         case 5:
-            AX_servo_set_pos_w_spd(AX_conf, 4, AX_pos, speed);
+            AX_servo_set_pos_w_spd(AX_conf, 6, AX_pos, speed);
             break;
         default:
             ESP_LOGW(TAG, "invalid DOF!");
             break;
     }
 
-    vTaskDelay(10 / portTICK_PERIOD_MS);
+    vTaskDelay(UART_WAIT);
 
     // update goal position
     if (speed != 0)
@@ -240,16 +240,34 @@ void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_
  */
 void motor_init(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t mks_conf, float* motor_pos)
 {
-    AX_servo_init(AX_conf);
     emm42_servo_init(emm42_conf);
     mks_servo_init(mks_conf);
+    AX_servo_init(AX_conf);
 
-    vTaskDelay(10 / portTICK_PERIOD_MS);
+    vTaskDelay(UART_WAIT);
 
-    // stop all motors
-    for (uint32_t i = 0; i < MOTORS_NUM; i++)
+    if (MOTORS_NUM > 3)
     {
-        single_DOF_move(AX_conf, emm42_conf, mks_conf, i, 0, 0, motor_pos);
-        motor_pos[i] = get_motor_pos(AX_conf, emm42_conf, mks_conf, i);
+        for (uint32_t i = 4; i < MOTORS_NUM + 1; i++)
+        {
+            AX_servo_write_register(AX_conf, i, AX_RETURN_LEVEL, AX_RETURN_READ);
+            vTaskDelay(UART_WAIT);
+
+            AX_servo_write_register(AX_conf, i, AX_RETURN_DELAY_TIME, 250);
+            vTaskDelay(UART_WAIT);
+
+            AX_servo_set_shutdown_alarm(AX_conf, i, 5);
+            vTaskDelay(UART_WAIT);
+
+            AX_servo_set_angle_limit(AX_conf, i, 0, 1023);
+            vTaskDelay(UART_WAIT);
+
+            AX_servo_set_max_torque(AX_conf, i, 1022);
+            vTaskDelay(UART_WAIT);
+        }
     }
+
+    // get all motors positions
+    for (uint32_t i = 0; i < MOTORS_NUM; i++)
+        motor_pos[i] = get_motor_pos(AX_conf, emm42_conf, mks_conf, i);
 }
