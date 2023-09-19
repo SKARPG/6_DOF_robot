@@ -6,7 +6,11 @@
 #include "esp_log.h"
 #include "motor_move.h"
 
-#define FULL_ROT 200
+#define UART_NUM    UART_NUM_2
+#define UART_BAUD   115200
+#define TX_PIN      17
+#define RX_PIN      16
+#define RTS_PIN     15
 
 static const char *TAG = "main";
 
@@ -14,39 +18,25 @@ static const char *TAG = "main";
 void app_main(void)
 {
     AX_servo_conf_t AX_conf = {
-        .uart = UART_NUM_2,
-        .tx_pin = 17,
-        .rx_pin = 16,
-        .rts_pin = 15,
-        .baudrate = 115200
+        .uart = UART_NUM,
+        .tx_pin = TX_PIN,
+        .rx_pin = RX_PIN,
+        .rts_pin = RTS_PIN,
+        .baudrate = UART_BAUD
     };
-
-    gpio_num_t emm42_step_pin[] = {23, 14};
-    gpio_num_t emm42_dir_pin[] = {22, 13};
-    gpio_num_t emm42_en_pin[] = {21, 12};
 
     emm42_conf_t emm42_conf = {
-        .uart = UART_NUM_2,
-        .baudrate = 115200,
-        .tx_pin = 17,
-        .rx_pin = 16,
-        .step_pin = emm42_step_pin,
-        .dir_pin = emm42_dir_pin,
-        .en_pin = emm42_en_pin
+        .uart = UART_NUM,
+        .baudrate = UART_BAUD,
+        .tx_pin = TX_PIN,
+        .rx_pin = RX_PIN
     };
 
-    gpio_num_t mks_step_pin[] = {27};
-    gpio_num_t mks_dir_pin[] = {26};
-    gpio_num_t mks_en_pin[] = {25};
-
     mks_conf_t mks_conf = {
-        .uart = UART_NUM_2,
-        .baudrate = 115200,
-        .tx_pin = 17,
-        .rx_pin = 16,
-        .step_pin = mks_step_pin,
-        .dir_pin = mks_dir_pin,
-        .en_pin = mks_en_pin
+        .uart = UART_NUM,
+        .baudrate = UART_BAUD,
+        .tx_pin = TX_PIN,
+        .rx_pin = RX_PIN
     };
 
     float motor_pos[MOTORS_NUM];
@@ -55,19 +45,18 @@ void app_main(void)
 
     motor_init(AX_conf, emm42_conf, mks_conf, motor_pos);
 
-    int16_t max_speed = 100;
     int16_t speed = 25;
     float pos = 0.0f;
 
     int16_t dir = -1;
 
-    single_DOF_move(AX_conf, emm42_conf, mks_conf, 3, 150, speed, motor_pos);
-    single_DOF_move(AX_conf, emm42_conf, mks_conf, 4, 150, speed, motor_pos);
-    single_DOF_move(AX_conf, emm42_conf, mks_conf, 5, 150, speed, motor_pos);
+    single_DOF_move(AX_conf, emm42_conf, mks_conf, 3, 0.0f, speed, motor_pos);
+    single_DOF_move(AX_conf, emm42_conf, mks_conf, 4, 0.0f, speed, motor_pos);
+    single_DOF_move(AX_conf, emm42_conf, mks_conf, 5, 0.0f, speed, motor_pos);
 
     while (1)
     {
-        // if (speed >= max_speed || speed <= 0)
+        // if (speed >= 100 || speed <= 0)
         //     dir = -dir;
 
         // speed = speed + 5 * dir;

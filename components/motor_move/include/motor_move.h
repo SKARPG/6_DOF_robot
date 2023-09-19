@@ -17,7 +17,7 @@
 #include "mks_servo.h"
 #include "emm42_servo.h"
 
-#define MOTORS_NUM 6 // number of motors // CHANGE LATER !!!
+#define MOTORS_NUM 6 // number of motors
 
 #define EMM42_POS_TRESHOLD 1.8f // emm42 servo position treshold
 #define MKS_POS_TRESHOLD 1.8f // MKS servo position treshold

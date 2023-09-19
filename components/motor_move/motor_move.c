@@ -56,7 +56,7 @@ float get_motor_pos(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t
     if (DOF == 0 || DOF == 1 || DOF == 2)
         position = position / (float)GEAR_RATIO;
     else if (DOF == 3 || DOF == 4 || DOF == 5)
-        position = position / 1023.0f * 300.0f;
+        position = position / 1023.0f * 300.0f - 150.0f;
 
     return position;
 }
@@ -169,7 +169,7 @@ void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_
         speed = (int16_t)((float)speed_percent / 100.0f * 1023.0f);
 
         // convert position in degrees to AX servo position
-        AX_pos = (uint16_t)(position / 300.0f * 1023.0f);
+        AX_pos = (uint16_t)((position + 150.0f) / 300.0f * 1023.0f);
 
         if (AX_pos > 1023)
         {
@@ -224,7 +224,7 @@ void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_
         }
         else if (DOF == 3 || DOF == 4 || DOF == 5)
         {
-            motor_pos[DOF] = (float)AX_pos / 1023.0f * 300.0f;
+            motor_pos[DOF] = (float)AX_pos / 1023.0f * 300.0f - 150.0f;
         }
     }
 }
