@@ -18,6 +18,7 @@
 * homing function
 * saving position after power off
 * normalize servos velocities
+* decide how to parse `AX_servo_conf_t`, `emm42_conf_t` and `mks_conf_t` to init function
 
 ## Sources
 https://github.com/JanG175/6_DOF_robot/tree/450f79c7eb65cb54c5a698a6c0e79beca74c9bbc/components/motor_move

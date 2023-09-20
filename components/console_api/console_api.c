@@ -3,6 +3,81 @@
 
 static const char* TAG = "console_demo";
 
+// struct for servo_move command arguments
+static struct {
+    struct arg_int* DOF;
+    struct arg_dbl* pos;
+    struct arg_int* speed;
+    struct arg_end* end;
+} servo_move_args;
+
+
+/**
+ * @brief command for moving a single DOF
+ * 
+ * @param argc number of arguments
+ * @param argv array of arguments
+ * @return int 0 if success, 1 if error
+ */
+static int cmd_servo_move(int argc, char** argv)
+{
+    int nerrors = arg_parse(argc, argv, (void**)&servo_move_args);
+    if (nerrors != 0)
+    {
+        arg_print_errors(stderr, servo_move_args.end, argv[0]);
+        return 1;
+    }
+
+    assert(servo_move_args.DOF->count == 1);
+    assert(servo_move_args.pos->count == 1);
+    assert(servo_move_args.speed->count == 1);
+    const uint8_t DOF = servo_move_args.DOF->ival[0];
+    const float pos = servo_move_args.pos->dval[0];
+    const uint8_t speed = servo_move_args.speed->ival[0];
+
+    if (DOF != 1 && DOF != 2 && DOF != 3 && DOF != 4 && DOF != 5 && DOF != 6)
+    {
+        printf("wrong DOF number!\n");
+        return 1;
+    }
+
+    if (speed > 100)
+    {
+        printf("wrong speed!\n");
+        return 1;
+    }
+
+    printf("moving motor: %d, to position: %f, with speed: %u\n", DOF, pos, speed);
+
+    single_DOF_move(DOF, pos, speed);
+    wait_for_motors_stop();
+
+    return 0;
+}
+
+
+/**
+ * @brief register servo_move command
+ * 
+ */
+static void register_servo_move()
+{
+    servo_move_args.DOF = arg_int1(NULL, NULL, "<1|2|3|4|5|6>", "number of DOF (1 - 6)");
+    servo_move_args.pos = arg_dbl1(NULL, NULL, "<float>", "desired position in degrees");
+    servo_move_args.speed = arg_int1(NULL, NULL, "<0-100>", "percent of speed (0 - 100 %)");
+    servo_move_args.end = arg_end(3);
+
+    const esp_console_cmd_t cmd = {
+        .command = "servo_move",
+        .help = "Move servo to a given position",
+        .hint = NULL,
+        .func = &cmd_servo_move,
+        .argtable = &servo_move_args
+    };
+
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+}
+
 
 /**
  * @brief iniiialize non-volatile storage
@@ -120,18 +195,13 @@ void console_api_start()
     init_console();
 
     // register commands
-
-    // esp_console_register_help_command();
-    // register_system_common();
-    // register_system_sleep();
-    // register_wifi();
-    // register_nvs();
+    register_servo_move();
 
     // prompt to be printed before each line (this can be customized, made dynamic, etc.)
     const char* prompt = LOG_COLOR_I PROMPT_STR "> " LOG_RESET_COLOR;
 
     printf("\n"
-        "This is an example of ESP-IDF console component.\n"
+        "This is the 6-DOF robotic arm console.\n"
         "Type 'help' to get the list of commands.\n"
         "Use UP/DOWN arrows to navigate through command history.\n"
         "Press TAB when typing command name to auto-complete.\n"

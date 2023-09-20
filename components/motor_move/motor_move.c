@@ -11,17 +11,22 @@
 
 static const char *TAG = "motor_move";
 
+static portMUX_TYPE motor_spinlock = portMUX_INITIALIZER_UNLOCKED; // spinlock for critical sections
+
+// globals
+static AX_servo_conf_t AX_conf; // struct with AX servo parameters
+static emm42_conf_t emm42_conf; // struct with emm42 servo parameters
+static mks_conf_t mks_conf; // struct with mks servo parameters
+static float motor_pos[MOTORS_NUM]; // array with current positions for each motor in degrees
+
 
 /**
  * @brief get motors position
  * 
- * @param AX_conf struct with AX servo parameters
- * @param emm42_conf struct with emm42 servo parameters
- * @param mks_conf struct with mks servo parameters
  * @param DOF number of DOF
  * @return position in degrees
  */
-float get_motor_pos(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t mks_conf, uint8_t DOF)
+float get_motor_pos(uint8_t DOF)
 {
     float position = 0.0f;
 
@@ -65,12 +70,8 @@ float get_motor_pos(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t
 /**
  * @brief wait for all motors to stop
  * 
- * @param AX_conf struct with AX servo parameters
- * @param emm42_conf struct with emm42 servo parameters
- * @param mks_conf struct with mks servo parameters
- * @param motor_goal array with goal positions for each motor in degrees
  */
-void wait_for_motors_stop(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t mks_conf, float* motor_goal)
+void wait_for_motors_stop()
 {
     bool motor_stop[MOTORS_NUM];
     for (uint32_t i = 0; i < MOTORS_NUM; i++)
@@ -78,6 +79,7 @@ void wait_for_motors_stop(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_
 
     uint8_t stop = 1;
     float pos_tresh = EMM42_POS_TRESHOLD;
+    float motor_goal = 0.0f;
 
     while (stop)
     {
@@ -91,12 +93,16 @@ void wait_for_motors_stop(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_
             else if (i == 3 || i == 4 || i == 5)
                 pos_tresh = AX_POS_TRESHOLD;
 
-            if (fabs(get_motor_pos(AX_conf, emm42_conf, mks_conf, i) - motor_goal[i]) <= pos_tresh)
+            portENTER_CRITICAL(&motor_spinlock);
+            motor_goal = motor_pos[i];
+            portEXIT_CRITICAL(&motor_spinlock);
+
+            if (fabs(get_motor_pos(i) - motor_goal) <= pos_tresh)
                 motor_stop[i] = true;
             else
                 motor_stop[i] = false;
 
-            // printf("%lu\t%f\n", i, get_motor_pos(AX_conf, emm42_conf, mks_conf, i) - motor_goal[i]); // for debug
+            // printf("%lu\t%f\n", i, get_motor_pos(AX_conf, emm42_conf, mks_conf, i) - motor_goal); // for debug
         }
 
         // printf("\n"); // for debug
@@ -116,23 +122,27 @@ void wait_for_motors_stop(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_
     // prevent position error accumulation
     vTaskDelay(25 / portTICK_PERIOD_MS);
 
+    float cur_pos = 0.0f;
+
     for (uint32_t i = 0; i < MOTORS_NUM; i++)
-        motor_goal[i] = get_motor_pos(AX_conf, emm42_conf, mks_conf, i);
+    {
+        cur_pos = get_motor_pos(i);
+
+        portENTER_CRITICAL(&motor_spinlock);
+        motor_pos[i] = cur_pos;
+        portEXIT_CRITICAL(&motor_spinlock);
+    }
 }
 
 
 /**
  * @brief move each DOF to position with speed
  * 
- * @param AX_conf struct with AX servo parameters
- * @param emm42_conf struct with emm42 servo parameters
- * @param mks_conf struct with mks servo parameters
  * @param DOF number of DOF
  * @param position desired position in degrees
  * @param speed_percent percent of speed (0 - 100 %)
- * @param motor_pos array with current positions for each motor in degrees
  */
-void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t mks_conf, uint8_t DOF, float position, uint8_t speed_percent, float* motor_pos)
+void single_DOF_move(uint8_t DOF, float position, uint8_t speed_percent)
 {
     uint32_t pulses = 0;
     uint16_t AX_pos = 0;
@@ -147,20 +157,26 @@ void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_
 
     if (DOF == 0 || DOF == 1 || DOF == 2)
     {
+        float cur_motor_pos = 0.0f;
+
+        portENTER_CRITICAL(&motor_spinlock);
+        cur_motor_pos = motor_pos[DOF];
+        portEXIT_CRITICAL(&motor_spinlock);
+
         speed = (int16_t)((float)speed_percent / 100.0f * 1279.0f);
 
         // convert position in degrees to pulses
-        pulses = (uint32_t)(fabs(position - motor_pos[DOF]) / 360.0f * (float)FULL_ROT) * GEAR_RATIO;
+        pulses = (uint32_t)(fabs(position - cur_motor_pos) / 360.0f * (float)FULL_ROT) * GEAR_RATIO;
 
         // CW orientation
         if (DOF == 1)
         {
-            if (position < motor_pos[DOF])
+            if (position < cur_motor_pos)
                 speed = -speed;
         }
         else
         {
-            if (position > motor_pos[DOF])
+            if (position > cur_motor_pos)
                 speed = -speed;
         }
     }
@@ -214,17 +230,26 @@ void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_
     // update goal position
     if (speed != 0)
     {
-        if (DOF == 0 || DOF == 2)
+        float update_pos = 0.0f;
+
+        if (DOF == 0 || DOF == 1 || DOF == 2)
         {
-            motor_pos[DOF] -= (float)(speed/abs(speed)) * (float)pulses / (float)FULL_ROT * 360.0f / (float)GEAR_RATIO;
-        }
-        else if (DOF == 1) // CW orientation
-        {
-            motor_pos[DOF] += (float)(speed/abs(speed)) * (float)pulses / (float)FULL_ROT * 360.0f / (float)GEAR_RATIO;
+            update_pos = (float)(speed/abs(speed)) * (float)pulses / (float)FULL_ROT * 360.0f / (float)GEAR_RATIO;
+
+            if (DOF == 1) // CW orientation
+                update_pos = -update_pos;
+
+            portENTER_CRITICAL(&motor_spinlock);
+            motor_pos[DOF] -= update_pos;
+            portEXIT_CRITICAL(&motor_spinlock);
         }
         else if (DOF == 3 || DOF == 4 || DOF == 5)
         {
-            motor_pos[DOF] = (float)AX_pos / 1023.0f * 300.0f - 150.0f;
+            update_pos = (float)AX_pos / 1023.0f * 300.0f - 150.0f;
+
+            portENTER_CRITICAL(&motor_spinlock);
+            motor_pos[DOF] = update_pos;
+            portEXIT_CRITICAL(&motor_spinlock);
         }
     }
 }
@@ -233,13 +258,34 @@ void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_
 /**
  * @brief initialize all motors
  * 
- * @param AX_conf struct with AX servo parameters
- * @param emm42_conf struct with emm42 servo parameters
- * @param mks_conf struct with mks servo parameters
- * @param motor_pos array with current positions for each motor
+ * @param AX_config pointer to a struct with AX servo parameters
+ * @param emm42_config pointer to a struct with emm42 servo parameters
+ * @param mks_config pointer to a struct with mks servo parameters
  */
-void motor_init(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t mks_conf, float* motor_pos)
+void motor_init(AX_servo_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config)
 {
+    portENTER_CRITICAL(&motor_spinlock);
+    AX_conf = *AX_config;
+    emm42_conf = *emm42_config;
+    mks_conf = *mks_config;
+    portEXIT_CRITICAL(&motor_spinlock);
+
+    // AX_conf.uart = AX_config->uart;
+    // AX_conf.tx_pin = AX_config->tx_pin;
+    // AX_conf.rx_pin = AX_config->rx_pin;
+    // AX_conf.rts_pin = AX_config->rts_pin;
+    // AX_conf.baudrate = AX_config->baudrate;
+
+    // emm42_conf.uart = emm42_config->uart;
+    // emm42_conf.baudrate = emm42_config->baudrate;
+    // emm42_conf.tx_pin = emm42_config->tx_pin;
+    // emm42_conf.rx_pin = emm42_config->rx_pin;
+
+    // mks_conf.uart = mks_config->uart;
+    // mks_conf.baudrate = mks_config->baudrate;
+    // mks_conf.tx_pin = mks_config->tx_pin;
+    // mks_conf.rx_pin = mks_config->rx_pin;
+
     emm42_servo_init(emm42_conf);
     mks_servo_init(mks_conf);
     AX_servo_init(AX_conf);
@@ -267,7 +313,15 @@ void motor_init(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t mks
         }
     }
 
+    float cur_pos = 0.0f;
+
     // get all motors positions
     for (uint32_t i = 0; i < MOTORS_NUM; i++)
-        motor_pos[i] = get_motor_pos(AX_conf, emm42_conf, mks_conf, i);
+    {
+        cur_pos = get_motor_pos(i);
+
+        portENTER_CRITICAL(&motor_spinlock);
+        motor_pos[i] = cur_pos;
+        portEXIT_CRITICAL(&motor_spinlock);
+    }
 }

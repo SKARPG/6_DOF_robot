@@ -1,5 +1,9 @@
+#pragma once
+
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
+#include <inttypes.h>
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_console.h"
