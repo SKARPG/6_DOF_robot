@@ -34,7 +34,7 @@ float get_motor_pos(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t
             position = -mks_servo_uart_read_encoder(mks_conf, 2); // CW orientation
             break;
         case 2:
-            // position = emm42_servo_uart_read_motor_pos(emm42_conf, 3);
+            position = emm42_servo_uart_read_motor_pos(emm42_conf, 3);
             break;
         case 3:
             position = (float)AX_servo_get_pos(AX_conf, 4);
@@ -193,7 +193,7 @@ void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_
             mks_servo_uart_cr_set_pos(mks_conf, 2, speed, MKS_ACCEL, pulses);
             break;
         case 2:
-            // emm42_servo_uart_move(emm42_conf, 3, speed, EMM42_ACCEL, pulses);
+            emm42_servo_uart_move(emm42_conf, 3, speed, EMM42_ACCEL, pulses);
             break;
         case 3:
             AX_servo_set_pos_w_spd(AX_conf, 4, AX_pos, speed);

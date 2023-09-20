@@ -50,9 +50,8 @@ void app_main(void)
 
     int16_t dir = -1;
 
-    single_DOF_move(AX_conf, emm42_conf, mks_conf, 3, 0.0f, speed, motor_pos);
-    single_DOF_move(AX_conf, emm42_conf, mks_conf, 4, 0.0f, speed, motor_pos);
-    single_DOF_move(AX_conf, emm42_conf, mks_conf, 5, 0.0f, speed, motor_pos);
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        single_DOF_move(AX_conf, emm42_conf, mks_conf, i, 0.0f, speed, motor_pos);
 
     while (1)
     {
@@ -62,15 +61,16 @@ void app_main(void)
         // speed = speed + 5 * dir;
         // ESP_LOGI(TAG, "speed: %d\n", speed);
 
-        if (pos >= 180.0f || pos <= 0.0f)
+        if (pos >= 120.0f || pos <= 0.0f)
             dir = -dir;
         pos += (float)dir;
         ESP_LOGI(TAG, "pos: %f\n", pos);
 
         // ======================================================================
 
-        single_DOF_move(AX_conf, emm42_conf, mks_conf, 0, pos, speed, motor_pos);
-        single_DOF_move(AX_conf, emm42_conf, mks_conf, 1, pos, speed, motor_pos);
+        for (uint8_t i = 0; i < 3; i++)
+            single_DOF_move(AX_conf, emm42_conf, mks_conf, i, pos, speed, motor_pos);
+
         wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
 
         for (uint8_t i = 0; i < MOTORS_NUM; i++)
@@ -81,8 +81,9 @@ void app_main(void)
 
         // ======================================================================
 
-        single_DOF_move(AX_conf, emm42_conf, mks_conf, 0, -pos, speed, motor_pos);
-        single_DOF_move(AX_conf, emm42_conf, mks_conf, 1, -pos, speed, motor_pos);
+        for (uint8_t i = 0; i < 3; i++)
+            single_DOF_move(AX_conf, emm42_conf, mks_conf, i, -pos, speed, motor_pos);
+
         wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
 
         for (uint8_t i = 0; i < MOTORS_NUM; i++)
