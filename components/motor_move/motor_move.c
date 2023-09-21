@@ -21,7 +21,7 @@ static const char *TAG = "motor_move";
  * @param DOF number of DOF
  * @return position in degrees
  */
-float get_motor_pos(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t mks_conf, uint8_t DOF)
+float get_motor_pos(AX_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t mks_conf, uint8_t DOF)
 {
     float position = 0.0f;
 
@@ -70,7 +70,7 @@ float get_motor_pos(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t
  * @param mks_conf struct with mks servo parameters
  * @param motor_goal array with goal positions for each motor in degrees
  */
-void wait_for_motors_stop(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t mks_conf, float* motor_goal)
+void wait_for_motors_stop(AX_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t mks_conf, float* motor_goal)
 {
     bool motor_stop[MOTORS_NUM];
     for (uint32_t i = 0; i < MOTORS_NUM; i++)
@@ -132,7 +132,7 @@ void wait_for_motors_stop(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_
  * @param speed_percent percent of speed (0 - 100 %)
  * @param motor_pos array with current positions for each motor in degrees
  */
-void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t mks_conf, uint8_t DOF, float position, uint8_t speed_percent, float* motor_pos)
+void single_DOF_move(AX_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t mks_conf, uint8_t DOF, float position, uint8_t speed_percent, float* motor_pos)
 {
     uint32_t pulses = 0;
     uint16_t AX_pos = 0;
@@ -238,7 +238,7 @@ void single_DOF_move(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_
  * @param mks_conf struct with mks servo parameters
  * @param motor_pos array with current positions for each motor
  */
-void motor_init(AX_servo_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t mks_conf, float* motor_pos)
+void motor_init(AX_conf_t AX_conf, emm42_conf_t emm42_conf, mks_conf_t mks_conf, float* motor_pos)
 {
     emm42_servo_init(emm42_conf);
     mks_servo_init(mks_conf);

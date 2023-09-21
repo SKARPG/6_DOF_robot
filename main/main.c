@@ -17,7 +17,7 @@ static const char *TAG = "main";
 
 void app_main(void)
 {
-    AX_servo_conf_t AX_conf = {
+    AX_conf_t AX_conf = {
         .uart = UART_NUM,
         .tx_pin = TX_PIN,
         .rx_pin = RX_PIN,
