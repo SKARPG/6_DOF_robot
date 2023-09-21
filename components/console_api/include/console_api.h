@@ -1,3 +1,11 @@
+/**
+ * @file console_api.h
+ * @author JanG175
+ * @brief 6-DOF ROBOT MOTOR CONSOLE API
+ * 
+ * @copyright All rigths reserved (R) 2023
+ */
+
 #pragma once
 
 #include <stdio.h>

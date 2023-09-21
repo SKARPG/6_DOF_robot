@@ -18,8 +18,6 @@ static const char *TAG = "main";
 
 void app_main(void)
 {
-    console_api_start();
-
     AX_servo_conf_t AX_config = {
         .uart = UART_NUM,
         .tx_pin = TX_PIN,
@@ -51,6 +49,9 @@ void app_main(void)
 
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
         single_DOF_move(i, 0.0f, speed);
+
+    // start console
+    console_api_start();
 
     while (1)
     {

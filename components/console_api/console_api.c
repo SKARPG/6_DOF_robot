@@ -1,3 +1,11 @@
+/**
+ * @file console_api.c
+ * @author JanG175
+ * @brief 6-DOF ROBOT MOTOR CONSOLE API
+ * 
+ * @copyright All rigths reserved (R) 2023
+ */
+
 #include <stdio.h>
 #include "console_api.h"
 
@@ -17,7 +25,7 @@ static struct {
  * 
  * @param argc number of arguments
  * @param argv array of arguments
- * @return int 0 if success, 1 if error
+ * @return 0 - success, 1 - error
  */
 static int cmd_servo_move(int argc, char** argv)
 {
@@ -49,7 +57,7 @@ static int cmd_servo_move(int argc, char** argv)
 
     printf("moving motor: %d, to position: %f, with speed: %u\n", DOF, pos, speed);
 
-    single_DOF_move(DOF, pos, speed);
+    single_DOF_move(DOF - 1, pos, speed);
     wait_for_motors_stop();
 
     return 0;
@@ -65,7 +73,7 @@ static void register_servo_move()
     servo_move_args.DOF = arg_int1(NULL, NULL, "<1|2|3|4|5|6>", "number of DOF (1 - 6)");
     servo_move_args.pos = arg_dbl1(NULL, NULL, "<float>", "desired position in degrees");
     servo_move_args.speed = arg_int1(NULL, NULL, "<0-100>", "percent of speed (0 - 100 %)");
-    servo_move_args.end = arg_end(3);
+    servo_move_args.end = arg_end(4);
 
     const esp_console_cmd_t cmd = {
         .command = "servo_move",

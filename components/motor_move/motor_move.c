@@ -270,22 +270,6 @@ void motor_init(AX_servo_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf
     mks_conf = *mks_config;
     portEXIT_CRITICAL(&motor_spinlock);
 
-    // AX_conf.uart = AX_config->uart;
-    // AX_conf.tx_pin = AX_config->tx_pin;
-    // AX_conf.rx_pin = AX_config->rx_pin;
-    // AX_conf.rts_pin = AX_config->rts_pin;
-    // AX_conf.baudrate = AX_config->baudrate;
-
-    // emm42_conf.uart = emm42_config->uart;
-    // emm42_conf.baudrate = emm42_config->baudrate;
-    // emm42_conf.tx_pin = emm42_config->tx_pin;
-    // emm42_conf.rx_pin = emm42_config->rx_pin;
-
-    // mks_conf.uart = mks_config->uart;
-    // mks_conf.baudrate = mks_config->baudrate;
-    // mks_conf.tx_pin = mks_config->tx_pin;
-    // mks_conf.rx_pin = mks_config->rx_pin;
-
     emm42_servo_init(emm42_conf);
     mks_servo_init(mks_conf);
     AX_servo_init(AX_conf);
