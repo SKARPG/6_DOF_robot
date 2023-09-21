@@ -14,7 +14,7 @@ static const char *TAG = "motor_move";
 static portMUX_TYPE motor_spinlock = portMUX_INITIALIZER_UNLOCKED; // spinlock for critical sections
 
 // globals
-static AX_servo_conf_t AX_conf; // struct with AX servo parameters
+static AX_conf_t AX_conf; // struct with AX servo parameters
 static emm42_conf_t emm42_conf; // struct with emm42 servo parameters
 static mks_conf_t mks_conf; // struct with mks servo parameters
 static float motor_pos[MOTORS_NUM]; // array with current positions for each motor in degrees
@@ -262,7 +262,7 @@ void single_DOF_move(uint8_t DOF, float position, uint8_t speed_percent)
  * @param emm42_config pointer to a struct with emm42 servo parameters
  * @param mks_config pointer to a struct with mks servo parameters
  */
-void motor_init(AX_servo_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config)
+void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config)
 {
     portENTER_CRITICAL(&motor_spinlock);
     AX_conf = *AX_config;

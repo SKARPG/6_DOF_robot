@@ -55,10 +55,12 @@ static int cmd_servo_move(int argc, char** argv)
         return 1;
     }
 
-    printf("moving motor: %d, to position: %f, with speed: %u\n", DOF, pos, speed);
+    printf("moving servo: %d, to position: %f, with speed: %u ...\n", DOF, pos, speed);
 
     single_DOF_move(DOF - 1, pos, speed);
     wait_for_motors_stop();
+
+    printf("done!\n");
 
     return 0;
 }
