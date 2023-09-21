@@ -79,7 +79,7 @@ static void register_servo_move()
 
     const esp_console_cmd_t cmd = {
         .command = "servo_move",
-        .help = "Move servo to a given position",
+        .help = "Move servo to a given position with a given speed",
         .hint = NULL,
         .func = &cmd_servo_move,
         .argtable = &servo_move_args
@@ -205,6 +205,7 @@ void console_api_start()
     init_console();
 
     // register commands
+    esp_console_register_help_command();
     register_servo_move();
 
     // prompt to be printed before each line (this can be customized, made dynamic, etc.)
