@@ -89,6 +89,69 @@ static void register_servo_move()
 }
 
 
+// struct for servo_get_pos command arguments
+static struct {
+    struct arg_int* DOF;
+    struct arg_end* end;
+} servo_get_pos_args;
+
+
+/**
+ * @brief command for getting a single DOF position
+ * 
+ * @param argc number of arguments
+ * @param argv array of arguments
+ * @return 0 - success, 1 - error
+ */
+static int cmd_servo_get_pos(int argc, char** argv)
+{
+    int nerrors = arg_parse(argc, argv, (void**)&servo_get_pos_args);
+    if (nerrors != 0)
+    {
+        arg_print_errors(stderr, servo_get_pos_args.end, argv[0]);
+        return 1;
+    }
+
+    assert(servo_get_pos_args.DOF->count == 1);
+    const uint8_t DOF = servo_get_pos_args.DOF->ival[0];
+
+    if (DOF != 1 && DOF != 2 && DOF != 3 && DOF != 4 && DOF != 5 && DOF != 6)
+    {
+        printf("wrong DOF number!\n");
+        return 1;
+    }
+
+    printf("getting servo %d position ...\n", DOF);
+
+    float pos = get_motor_pos(DOF - 1);
+
+    printf("servo %d position: %f\n", DOF, pos);
+
+    return 0;
+}
+
+
+/**
+ * @brief register servo_get_pos command
+ * 
+ */
+static void register_servo_get_pos()
+{
+    servo_get_pos_args.DOF = arg_int1(NULL, NULL, "<1|2|3|4|5|6>", "number of DOF (1 - 6)");
+    servo_get_pos_args.end = arg_end(2);
+
+    const esp_console_cmd_t cmd = {
+        .command = "servo_get_pos",
+        .help = "Get servo position",
+        .hint = NULL,
+        .func = &cmd_servo_get_pos,
+        .argtable = &servo_get_pos_args
+    };
+
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+}
+
+
 /**
  * @brief iniiialize non-volatile storage
  * 
@@ -207,6 +270,7 @@ void console_api_start()
     // register commands
     esp_console_register_help_command();
     register_servo_move();
+    register_servo_get_pos();
 
     // prompt to be printed before each line (this can be customized, made dynamic, etc.)
     const char* prompt = LOG_COLOR_I PROMPT_STR "> " LOG_RESET_COLOR;

@@ -18,8 +18,6 @@ static const char *TAG = "main";
 
 void app_main(void)
 {
-    console_api_start();
-
     AX_conf_t AX_config = {
         .uart = UART_NUM,
         .tx_pin = TX_PIN,
