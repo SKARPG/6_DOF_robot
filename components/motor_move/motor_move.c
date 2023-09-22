@@ -309,3 +309,17 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
         portEXIT_CRITICAL(&motor_spinlock);
     }
 }
+
+
+/**
+ * @brief deinitialize all motors
+ * 
+ */
+void motor_deinit()
+{
+    AX_servo_deinit(AX_conf);
+    emm42_servo_deinit(emm42_conf);
+    mks_servo_deinit(mks_conf);
+
+    vTaskDelay(UART_WAIT);
+}

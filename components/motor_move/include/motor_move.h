@@ -41,3 +41,5 @@ void wait_for_motors_stop();
 void single_DOF_move(uint8_t DOF, float position, uint8_t speed_percent);
 
 void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config);
+
+void motor_deinit();
