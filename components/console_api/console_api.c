@@ -11,6 +11,7 @@
 
 static const char* TAG = "console_demo";
 
+
 // struct for servo_move command arguments
 static struct {
     struct arg_int* DOF;
