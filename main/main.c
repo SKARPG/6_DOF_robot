@@ -6,6 +6,7 @@
 #include "esp_log.h"
 #include "motor_move.h"
 #include "console_api.h"
+#include "inv_kin.h"
 
 #define UART_NUM    UART_NUM_2
 #define UART_BAUD   115200
@@ -18,6 +19,28 @@ static const char *TAG = "main";
 
 void app_main(void)
 {
+    // calculate inverse kinematics
+    double desired_pos[6] = {X_ZERO, Y_ZERO, Z_ZERO, PHI_ZERO, PSI_ZERO, THETA_ZERO};
+    double joint_pos[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+
+    desired_pos[0] = 90.0f;
+    desired_pos[1] = 101.0f;
+    desired_pos[2] = 574.0f;
+    desired_pos[3] = 45.0f;
+    desired_pos[4] = -68.0f;
+    desired_pos[5] = 49.0f;
+
+    joint_pos[0] = 10.0f;
+    joint_pos[1] = 50.0f;
+    joint_pos[2] = 10.0f;
+    joint_pos[3] = 20.0f;
+    joint_pos[4] = -20.0f;
+    joint_pos[5] = 90.0f;
+
+    calc_inv_kin(desired_pos, joint_pos);
+    vTaskDelay(30000/portTICK_PERIOD_MS);
+
+
     AX_conf_t AX_config = {
         .uart = UART_NUM,
         .tx_pin = TX_PIN,

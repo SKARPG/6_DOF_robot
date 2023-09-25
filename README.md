@@ -8,7 +8,7 @@ cd components
 git clone https://github.com/JanG175/mks_servo.git
 git clone https://github.com/JanG175/emm42_servo.git
 git clone https://github.com/JanG175/AX_servo.git
-
+git clone https://github.com/JanG175/esp_matrix.git
 ```
 
 ## Configure SDK
