@@ -14,11 +14,25 @@
 #define RX_PIN      16
 #define RTS_PIN     15
 
+#define RPI_INTR_PIN 18
+
+#define I2C_NUM I2C_NUM_0
+#define I2C_SDA 23
+#define I2C_SCL 19
+
 static const char *TAG = "main";
 
 
 void app_main(void)
 {
+    rpi_i2c_conf_t rpi_i2c_config = {
+        .i2c_port = I2C_NUM,
+        .sda_pin = I2C_SDA,
+        .scl_pin = I2C_SCL,
+        .isr_pin = RPI_INTR_PIN
+    };
+    init_rpi_i2c(&rpi_i2c_config);
+
     // calculate inverse kinematics
     double desired_pos[6] = {X_ZERO, Y_ZERO, Z_ZERO, PHI_ZERO, PSI_ZERO, THETA_ZERO};
     double joint_pos[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};

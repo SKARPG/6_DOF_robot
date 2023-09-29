@@ -1,17 +1,16 @@
 #include <stdio.h>
-#include <math.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/gpio.h"
+#include "driver/i2c.h"
 #include "esp_log.h"
-#include "esp_matrix.h"
 
-// dimensions in mm
-#define DELTA0  100.0f
-#define DELTA1  80.0f
-#define DELTA2  80.0f
-#define DELTA3  63.0f
-#define DELTA4  63.0f
-#define DELTA5  26.0f
-#define L0      220.0f
-#define L1      210.0f
+#define I2C_FREQ_HZ 100000
+#define I2C_SLAVE_ADDR 0x12
+#define I2C_TIMEOUT_MS (100 / portTICK_PERIOD_MS)
+
+#define DATA_ACCURACY 10000.0f
+#define INIT_KEY 0x05
 
 // zero position in mm
 #define X_ZERO          0.0f
@@ -23,18 +22,15 @@
 #define PSI_ZERO        0.0f
 #define THETA_ZERO      0.0f
 
-// acceptable position errors in mm
-#define ACC_X_ERR       1.0f
-#define ACC_Y_ERR       1.0f
-#define ACC_Z_ERR       1.0f
+typedef struct rpi_i2c_conf_t
+{
+    i2c_port_t i2c_port;
+    gpio_num_t sda_pin;
+    gpio_num_t scl_pin;
+    gpio_num_t isr_pin;
+} rpi_i2c_conf_t;
 
-// acceptable orientation errors in radians
-#define ACC_PHI_ERR     deg2rad(1.0f)
-#define ACC_PSI_ERR     deg2rad(1.0f)
-#define ACC_THETA_ERR   deg2rad(1.0f)
 
-// max number of iterations
-#define MAX_ITER        1000
-
+void init_rpi_i2c(rpi_i2c_conf_t* conf);
 
 void calc_inv_kin(double* desired_pos, double* joint_pos);
