@@ -1,7 +1,9 @@
 # 6-DOF ROBOT RPI I2C COMMUNICTION API FOR CALCULATING INVERSE KINEMATICS (ESP-IDF) 
 
 ## Notes
-
+* Change I2C connection parameters in `inv_kin.h` file (see `#define I2C_SLAVE_ADDR` and `#define I2C_FREQ_HZ`).
+* In order to change data accuracy, change `#define DATA_ACCURACY` in `inv_kin.h` file.
+* `INIT_KEY` and `I2C_SLAVE_ADDR` must be the same on ESP and RPi (see `inv_kin.h` file).
 
 ## To do list:
 * debug and test

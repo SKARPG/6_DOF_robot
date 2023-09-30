@@ -1,16 +1,22 @@
 #include <stdio.h>
 #include "inv_kin.h"
 
-static portMUX_TYPE rpi_spinlock = portMUX_INITIALIZER_UNLOCKED;
-static const char* TAG = "inv_kin";
+static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 static rpi_i2c_conf_t rpi_i2c_conf;
 
+static const char* TAG = "rpi_i2c_inv_kin";
 
-void init_rpi_i2c(rpi_i2c_conf_t* conf)
+
+/**
+ * @brief initialize i2c connection with rpi
+ * 
+ * @param rpi_i2c_config struct with i2c parameters
+ */
+void init_rpi_i2c(rpi_i2c_conf_t* rpi_i2c_config)
 {
-    portENTER_CRITICAL(&rpi_spinlock);
-    rpi_i2c_conf = *conf;
-    portEXIT_CRITICAL(&rpi_spinlock);
+    portENTER_CRITICAL(&mux);
+    rpi_i2c_conf = *rpi_i2c_config;
+    portEXIT_CRITICAL(&mux);
 
     gpio_config_t io_conf;
     io_conf.intr_type = GPIO_INTR_DISABLE;
@@ -34,22 +40,18 @@ void init_rpi_i2c(rpi_i2c_conf_t* conf)
     };
     i2c_param_config(rpi_i2c_conf.i2c_port, &conf_slave);
     ESP_ERROR_CHECK(i2c_driver_install(rpi_i2c_conf.i2c_port, conf_slave.mode, 2048, 2048, 0));
-
-    // init connection
-    uint8_t init = 0x00;
-
-    while (init != INIT_KEY)
-    {
-        gpio_set_level(rpi_i2c_conf.isr_pin, 1);
-        i2c_slave_read_buffer(rpi_i2c_conf.i2c_port, &init, sizeof(init), I2C_TIMEOUT_MS);
-        gpio_set_level(rpi_i2c_conf.isr_pin, 0);
-        vTaskDelay(1 / portTICK_PERIOD_MS);
-    }
 }
 
 
+/**
+ * @brief send desired positions to rpi and receive solved inverse kinematics joint positions
+ * 
+ * @param desired_pos pointer to array of desired positions
+ * @param joint_pos pointer to array of joint positions
+ */
 void calc_inv_kin(double* desired_pos, double* joint_pos)
 {
+    // prepare data
     uint8_t w_desired_pos[6][8];
     for (uint8_t i = 0; i < 6; i++)
     {
@@ -86,6 +88,18 @@ void calc_inv_kin(double* desired_pos, double* joint_pos)
 
     uint8_t r_joint_pos[6][8];
 
+    // init connection
+    uint8_t init = 0x00;
+
+    while (init != INIT_KEY)
+    {
+        gpio_set_level(rpi_i2c_conf.isr_pin, 1);
+        i2c_slave_read_buffer(rpi_i2c_conf.i2c_port, &init, sizeof(init), I2C_TIMEOUT_MS);
+        gpio_set_level(rpi_i2c_conf.isr_pin, 0);
+        vTaskDelay(1 / portTICK_PERIOD_MS);
+    }
+
+    // notify rpi that esp wants to send data
     gpio_set_level(rpi_i2c_conf.isr_pin, 1);
 
     // send data
@@ -104,11 +118,11 @@ void calc_inv_kin(double* desired_pos, double* joint_pos)
                                 (int64_t)r_joint_pos[i][2] << 40 | (int64_t)r_joint_pos[i][3] << 32 |
                                 (int64_t)r_joint_pos[i][4] << 24 | (int64_t)r_joint_pos[i][5] << 16 |
                                 (int64_t)r_joint_pos[i][6] << 8 | (int64_t)r_joint_pos[i][7] << 0
-                                ) / DATA_ACCURACY;
+                               ) / DATA_ACCURACY;
+
+    gpio_set_level(rpi_i2c_conf.isr_pin, 0);
 
     // // for debug
     // for (uint8_t i = 0; i < 6; i++)
     //     ESP_LOGI(TAG, "received joint_pos[%u]: %f", i, joint_pos[i]);
-
-    gpio_set_level(rpi_i2c_conf.isr_pin, 0);
 }

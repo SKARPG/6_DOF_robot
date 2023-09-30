@@ -4,6 +4,5 @@ build/
 components/AX_servo/
 components/mks_servo/
 components/emm42_servo/
-components/esp_matrix/
 sdkconfig
 sdkconfig.old

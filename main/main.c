@@ -52,7 +52,7 @@ void app_main(void)
     joint_pos[5] = 90.0f;
 
     calc_inv_kin(desired_pos, joint_pos);
-    vTaskDelay(30000/portTICK_PERIOD_MS);
+    vTaskDelay(30000 / portTICK_PERIOD_MS);
 
 
     AX_conf_t AX_config = {

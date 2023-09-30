@@ -19,3 +19,20 @@ It is necessary to change partition table to custom one (`partitions.csv`) and s
 * `Serial flasher config` settings
 
 ![Flash size settings](README_images/image-1.png)
+
+## RPi program
+RPi works as an inverse kinematic solver. It receives data via I2C protocol from ESP32 and calculates angles for each servo. Then it sends calculated angles back to ESP32.
+
+In order to get RPi inverse kinematics solver program follow these commands in `Bash` terminal:
+
+```bash
+cd ~/Desktop
+git clone https://github.com/JanG175/inv_kin_solv.git
+mkdir build
+cd build
+cmake --build .
+./inv_kin_solv
+```
+
+Then setup this program as a startup program following these instructions:
+https://learn.sparkfun.com/tutorials/how-to-run-a-raspberry-pi-program-on-startup#method-3-systemd

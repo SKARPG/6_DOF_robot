@@ -5,8 +5,8 @@
 #include "driver/i2c.h"
 #include "esp_log.h"
 
-#define I2C_FREQ_HZ 100000
 #define I2C_SLAVE_ADDR 0x12
+#define I2C_FREQ_HZ 100000
 #define I2C_TIMEOUT_MS (100 / portTICK_PERIOD_MS)
 
 #define DATA_ACCURACY 10000.0f
@@ -31,6 +31,6 @@ typedef struct rpi_i2c_conf_t
 } rpi_i2c_conf_t;
 
 
-void init_rpi_i2c(rpi_i2c_conf_t* conf);
+void init_rpi_i2c(rpi_i2c_conf_t* rpi_i2c_config);
 
 void calc_inv_kin(double* desired_pos, double* joint_pos);
