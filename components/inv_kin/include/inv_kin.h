@@ -33,4 +33,6 @@ typedef struct rpi_i2c_conf_t
 
 void init_rpi_i2c(rpi_i2c_conf_t* rpi_i2c_config);
 
+void deinit_rpi_i2c();
+
 void calc_inv_kin(double* desired_pos, double* joint_pos);

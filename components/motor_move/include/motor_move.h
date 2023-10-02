@@ -18,6 +18,7 @@
 #include "AX_servo.h"
 #include "mks_servo.h"
 #include "emm42_servo.h"
+#include "inv_kin.h"
 
 #define MOTORS_NUM 6 // number of motors
 
@@ -40,6 +41,8 @@ void wait_for_motors_stop();
 
 void single_DOF_move(uint8_t DOF, float position, uint8_t speed_percent);
 
-void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config);
+void robot_move_to_pos(double* desired_pos, uint8_t speed_percent);
+
+void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config, rpi_i2c_conf_t* rpi_i2c_config);
 
 void motor_deinit();

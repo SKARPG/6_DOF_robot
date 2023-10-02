@@ -4,7 +4,7 @@
 static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 static rpi_i2c_conf_t rpi_i2c_conf;
 
-static const char* TAG = "rpi_i2c_inv_kin";
+// static const char* TAG = "rpi_i2c_inv_kin";
 
 
 /**
@@ -40,6 +40,16 @@ void init_rpi_i2c(rpi_i2c_conf_t* rpi_i2c_config)
     };
     i2c_param_config(rpi_i2c_conf.i2c_port, &conf_slave);
     ESP_ERROR_CHECK(i2c_driver_install(rpi_i2c_conf.i2c_port, conf_slave.mode, 2048, 2048, 0));
+}
+
+
+/**
+ * @brief deinit i2c connection with rpi
+ * 
+ */
+void deinit_rpi_i2c()
+{
+    ESP_ERROR_CHECK(i2c_driver_delete(rpi_i2c_conf.i2c_port));
 }
 
 

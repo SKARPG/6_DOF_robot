@@ -153,6 +153,84 @@ static void register_servo_get_pos()
 }
 
 
+// struct for robot_move_to_pos command arguments
+static struct {
+    struct arg_dbl* x;
+    struct arg_dbl* y;
+    struct arg_dbl* z;
+    struct arg_dbl* phi;
+    struct arg_dbl* psi;
+    struct arg_dbl* theta;
+    struct arg_int* speed;
+    struct arg_end* end;
+} robot_move_to_pos_args;
+
+
+/**
+ * @brief command for moving robot to a given position
+ * 
+ * @param argc number of arguments
+ * @param argv array of arguments
+ * @return 0 - success, 1 - error
+ */
+static int cmd_robot_move_to_pos(int argc, char** argv)
+{
+    int nerrors = arg_parse(argc, argv, (void**)&robot_move_to_pos_args);
+    if (nerrors != 0)
+    {
+        arg_print_errors(stderr, servo_get_pos_args.end, argv[0]);
+        return 1;
+    }
+
+    assert(robot_move_to_pos_args.x->count == 1);
+    assert(robot_move_to_pos_args.y->count == 1);
+    assert(robot_move_to_pos_args.z->count == 1);
+    assert(robot_move_to_pos_args.phi->count == 1);
+    assert(robot_move_to_pos_args.psi->count == 1);
+    assert(robot_move_to_pos_args.theta->count == 1);
+    assert(robot_move_to_pos_args.speed->count == 1);
+    const double x = robot_move_to_pos_args.x->dval[0];
+    const double y = robot_move_to_pos_args.y->dval[0];
+    const double z = robot_move_to_pos_args.z->dval[0];
+    const double phi = robot_move_to_pos_args.phi->dval[0];
+    const double psi = robot_move_to_pos_args.psi->dval[0];
+    const double theta = robot_move_to_pos_args.theta->dval[0];
+    const uint8_t speed = (uint8_t)robot_move_to_pos_args.speed->ival[0];
+
+    double desired_pos[6] = {x, y, z, phi, psi, theta};
+    robot_move_to_pos(desired_pos, speed);
+
+    return 0;
+}
+
+
+/**
+ * @brief register robot_move_to_pos command
+ * 
+ */
+static void register_robot_move_to_pos()
+{
+    robot_move_to_pos_args.x = arg_dbl1(NULL, NULL, "<double>", "x position in mm");
+    robot_move_to_pos_args.y = arg_dbl1(NULL, NULL, "<double>", "y position in mm");
+    robot_move_to_pos_args.z = arg_dbl1(NULL, NULL, "<double>", "z position in mm");
+    robot_move_to_pos_args.phi = arg_dbl1(NULL, NULL, "<double>", "phi position in deg");
+    robot_move_to_pos_args.psi = arg_dbl1(NULL, NULL, "<double>", "psi position in deg");
+    robot_move_to_pos_args.theta = arg_dbl1(NULL, NULL, "<double>", "theta position in deg");
+    robot_move_to_pos_args.speed = arg_int1(NULL, NULL, "<0-100>", "percent of speed (0 - 100 %)");
+    servo_get_pos_args.end = arg_end(10);
+
+    const esp_console_cmd_t cmd = {
+        .command = "robot_move_to_pos",
+        .help = "Move robot end effector to a desired position",
+        .hint = NULL,
+        .func = &cmd_robot_move_to_pos,
+        .argtable = &robot_move_to_pos_args
+    };
+
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+}
+
+
 /**
  * @brief iniiialize non-volatile storage
  * 
@@ -272,6 +350,7 @@ void console_api_start()
     esp_console_register_help_command();
     register_servo_move();
     register_servo_get_pos();
+    register_robot_move_to_pos();
 
     // prompt to be printed before each line (this can be customized, made dynamic, etc.)
     const char* prompt = LOG_COLOR_I PROMPT_STR "> " LOG_RESET_COLOR;

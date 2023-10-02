@@ -256,13 +256,36 @@ void single_DOF_move(uint8_t DOF, float position, uint8_t speed_percent)
 
 
 /**
+ * @brief move end effector of robot to desired position with desired speed
+ * 
+ * @param desired_pos pointer to array with desired position in mm and degrees
+ * @param speed_percent percent of speed (0 - 100 %)
+ */
+void robot_move_to_pos(double* desired_pos, uint8_t speed_percent)
+{
+    double joint_pos[MOTORS_NUM];
+
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        joint_pos[i] = (double)motor_pos[i];
+
+    calc_inv_kin(desired_pos, joint_pos);
+
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        single_DOF_move(i, (float)joint_pos[i], speed_percent);
+
+    wait_for_motors_stop();
+}
+
+
+/**
  * @brief initialize all motors
  * 
  * @param AX_config pointer to a struct with AX servo parameters
  * @param emm42_config pointer to a struct with emm42 servo parameters
  * @param mks_config pointer to a struct with mks servo parameters
+ * @param rpi_i2c_config pointer to a struct with rpi i2c parameters
  */
-void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config)
+void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config, rpi_i2c_conf_t* rpi_i2c_config)
 {
     portENTER_CRITICAL(&motor_spinlock);
     AX_conf = *AX_config;
@@ -273,6 +296,8 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
     emm42_servo_init(emm42_conf);
     mks_servo_init(mks_conf);
     AX_servo_init(AX_conf);
+
+    init_rpi_i2c(rpi_i2c_config);
 
     vTaskDelay(UART_WAIT);
 
@@ -320,6 +345,8 @@ void motor_deinit()
     AX_servo_deinit(AX_conf);
     emm42_servo_deinit(emm42_conf);
     mks_servo_deinit(mks_conf);
+
+    deinit_rpi_i2c();
 
     vTaskDelay(UART_WAIT);
 }
