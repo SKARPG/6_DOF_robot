@@ -27,7 +27,7 @@
 #define AX_POS_TRESHOLD 1.0f // AX servo position treshold
 
 #define FULL_ROT 200 // full rotation of motor in steps
-#define GEAR_RATIO 1 // gearbox ratio
+#define GEAR_RATIO 76 // gearbox ratio
 
 #define EMM42_ACCEL 255 // emm42 servo acceleration
 #define MKS_ACCEL 0 // MKS servo acceleration

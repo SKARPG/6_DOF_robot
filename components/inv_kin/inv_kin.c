@@ -40,6 +40,17 @@ void init_rpi_i2c(rpi_i2c_conf_t* rpi_i2c_config)
     };
     i2c_param_config(rpi_i2c_conf.i2c_port, &conf_slave);
     ESP_ERROR_CHECK(i2c_driver_install(rpi_i2c_conf.i2c_port, conf_slave.mode, 2048, 2048, 0));
+
+    // init connection
+    uint8_t init = 0x00;
+
+    while (init != INIT_KEY)
+    {
+        gpio_set_level(rpi_i2c_conf.isr_pin, 1);
+        i2c_slave_read_buffer(rpi_i2c_conf.i2c_port, &init, sizeof(init), I2C_TIMEOUT_MS);
+        gpio_set_level(rpi_i2c_conf.isr_pin, 0);
+        vTaskDelay(1 / portTICK_PERIOD_MS);
+    }
 }
 
 
@@ -97,17 +108,6 @@ void calc_inv_kin(double* desired_pos, double* joint_pos)
     }
 
     uint8_t r_joint_pos[6][8];
-
-    // init connection
-    uint8_t init = 0x00;
-
-    while (init != INIT_KEY)
-    {
-        gpio_set_level(rpi_i2c_conf.isr_pin, 1);
-        i2c_slave_read_buffer(rpi_i2c_conf.i2c_port, &init, sizeof(init), I2C_TIMEOUT_MS);
-        gpio_set_level(rpi_i2c_conf.isr_pin, 0);
-        vTaskDelay(1 / portTICK_PERIOD_MS);
-    }
 
     // notify rpi that esp wants to send data
     gpio_set_level(rpi_i2c_conf.isr_pin, 1);

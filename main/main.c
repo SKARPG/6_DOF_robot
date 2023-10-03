@@ -58,13 +58,11 @@ void app_main(void)
     // desired end effector position for inverse kinematics
     double desired_pos[6] = {X_ZERO, Y_ZERO, Z_ZERO, PHI_ZERO, PSI_ZERO, THETA_ZERO};
 
-    int16_t speed = 25;
-    float pos = 0.0f;
-
-    int16_t dir = -1;
+    int16_t speed = 5;
 
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
         single_DOF_move(i, 0.0f, speed);
+    wait_for_motors_stop();
 
     // start console
     // console_api_start();
@@ -80,6 +78,21 @@ void app_main(void)
         desired_pos[4] = -68.0f;
         desired_pos[5] = 49.0f;
 
+        ESP_LOGI(TAG, "moving to position 0");
         robot_move_to_pos(desired_pos, speed);
+        ESP_LOGI(TAG, "moved to position 0");
+
+        // mm
+        desired_pos[0] = 105.0f;
+        desired_pos[1] = 80.0f;
+        desired_pos[2] = 554.0f;
+        // deg
+        desired_pos[3] = 45.0f;
+        desired_pos[4] = -68.0f;
+        desired_pos[5] = 52.0f;
+
+        ESP_LOGI(TAG, "moving to position 1");
+        robot_move_to_pos(desired_pos, speed);
+        ESP_LOGI(TAG, "moved to position 1");
     }
 }
