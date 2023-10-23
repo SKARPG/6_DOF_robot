@@ -1,5 +1,8 @@
 .vscode/
 .devcontainer/
 build/
+components/AX_servo/
+components/mks_servo/
+components/emm42_servo/
 sdkconfig
 sdkconfig.old

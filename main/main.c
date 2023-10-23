@@ -5,6 +5,7 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "motor_move.h"
+#include "console_api.h"
 
 #define UART_NUM    UART_NUM_2
 #define UART_BAUD   115200
@@ -12,12 +13,18 @@
 #define RX_PIN      16
 #define RTS_PIN     15
 
+#define RPI_INTR_PIN 19
+
+#define I2C_NUM I2C_NUM_0
+#define I2C_SDA 21
+#define I2C_SCL 22
+
 static const char *TAG = "main";
 
 
 void app_main(void)
 {
-    AX_conf_t AX_conf = {
+    AX_conf_t AX_config = {
         .uart = UART_NUM,
         .tx_pin = TX_PIN,
         .rx_pin = RX_PIN,
@@ -25,71 +32,79 @@ void app_main(void)
         .baudrate = UART_BAUD
     };
 
-    emm42_conf_t emm42_conf = {
+    emm42_conf_t emm42_config = {
         .uart = UART_NUM,
         .baudrate = UART_BAUD,
         .tx_pin = TX_PIN,
         .rx_pin = RX_PIN
     };
 
-    mks_conf_t mks_conf = {
+    mks_conf_t mks_config = {
         .uart = UART_NUM,
         .baudrate = UART_BAUD,
         .tx_pin = TX_PIN,
         .rx_pin = RX_PIN
     };
 
-    float motor_pos[MOTORS_NUM];
+    rpi_i2c_conf_t rpi_i2c_config = {
+        .i2c_port = I2C_NUM,
+        .sda_pin = I2C_SDA,
+        .scl_pin = I2C_SCL,
+        .isr_pin = RPI_INTR_PIN
+    };
+
+    motor_init(&AX_config, &emm42_config, &mks_config, &rpi_i2c_config);
+
+    // desired end effector position for inverse kinematics
+    double desired_pos[6] = {X_ZERO, Y_ZERO, Z_ZERO, PHI_ZERO, PSI_ZERO, THETA_ZERO};
+
+    int16_t speed = 10;
+
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
-        motor_pos[i] = 0.0f;
+        single_DOF_move(i, 0.0f, speed);
+    wait_for_motors_stop();
 
-    motor_init(AX_conf, emm42_conf, mks_conf, motor_pos);
+    // start console
+    console_api_start();
 
-    int16_t speed = 25;
-    float pos = 0.0f;
-
-    int16_t dir = -1;
-
-    for (uint8_t i = 0; i < MOTORS_NUM; i++)
-        single_DOF_move(AX_conf, emm42_conf, mks_conf, i, 0.0f, speed, motor_pos);
-
+/*
     while (1)
     {
-        // if (speed >= 100 || speed <= 0)
-        //     dir = -dir;
+        // mm
+        desired_pos[0] = 90.0f;
+        desired_pos[1] = 101.0f;
+        desired_pos[2] = 574.0f;
+        // deg
+        desired_pos[3] = 45.0f;
+        desired_pos[4] = -68.0f;
+        desired_pos[5] = 49.0f;
 
-        // speed = speed + 5 * dir;
-        // ESP_LOGI(TAG, "speed: %d\n", speed);
+        ESP_LOGI(TAG, "moving to position 0");
+        robot_move_to_pos(desired_pos, speed);
+        ESP_LOGI(TAG, "moved to position 0");
 
-        if (pos >= 120.0f || pos <= 0.0f)
-            dir = -dir;
-        pos += (float)dir;
-        ESP_LOGI(TAG, "pos: %f\n", pos);
+        // mm
+        desired_pos[0] = 105.0f;
+        desired_pos[1] = 80.0f;
+        desired_pos[2] = 554.0f;
+        // deg
+        desired_pos[3] = 45.0f;
+        desired_pos[4] = -68.0f;
+        desired_pos[5] = 52.0f;
 
-        // ======================================================================
-
-        for (uint8_t i = 0; i < 3; i++)
-            single_DOF_move(AX_conf, emm42_conf, mks_conf, i, pos, speed, motor_pos);
-
-        wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
-
-        for (uint8_t i = 0; i < MOTORS_NUM; i++)
-            ESP_LOGI(TAG, "motor %d pos: %f\n", i, motor_pos[i]);
-        ESP_LOGI(TAG, "==================================================");
-
-        vTaskDelay(100 / portTICK_PERIOD_MS);
-
-        // ======================================================================
-
-        for (uint8_t i = 0; i < 3; i++)
-            single_DOF_move(AX_conf, emm42_conf, mks_conf, i, -pos, speed, motor_pos);
-
-        wait_for_motors_stop(AX_conf, emm42_conf, mks_conf, motor_pos);
-
-        for (uint8_t i = 0; i < MOTORS_NUM; i++)
-            ESP_LOGI(TAG, "motor %d pos: %f\n", i, motor_pos[i]);
-        ESP_LOGI(TAG, "==================================================");
-
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+        ESP_LOGI(TAG, "moving to position 1");
+        robot_move_to_pos(desired_pos, speed);
+        ESP_LOGI(TAG, "moved to position 1");
     }
+*/
+
+    // go back to zero position
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        single_DOF_move(i, 0.0f, speed);
+    wait_for_motors_stop();
+
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        motor_reset_zero_pos(i);
+
+    motor_deinit();
 }
