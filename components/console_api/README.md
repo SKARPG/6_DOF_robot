@@ -4,9 +4,9 @@
 * Console works the best on Putty.
 * Implemented commands:
     * `help` - prints the list of available commands,
-    * `servo_move <1|2|3|4|5|6> <float> <0-100>` - moves servo to a given position with a given speed (negative positions have to be parsed, for example, like that: `servo_move -- 5 -90.0 25`),
+    * `servo_move <1|2|3|4|5|6> <float> <float>` - moves servo to a given position with a given speed in RPM (negative positions have to be parsed, for example, like that: `servo_move -- 5 -90.0 25`); negative speed is not acceptable,
     * `servo_get_pos <1|2|3|4|5|6>` - gets servo position,
-    * `robot_move_to_pos <double> <double> <double> <double> <double> <double> <0 - 100>` - moves robot end effector to a desired position,
+    * `robot_move_to_pos <double> <double> <double> <double> <double> <double> <float>` - moves robot end effector to a desired position with desired speed in RPM,
     * `motor_zero_pos <1|2|3|4|5|6>` - sets current position of a motor as zero.
 
 ## To do list:

@@ -16,7 +16,7 @@ static const char* TAG = "console_demo";
 static struct {
     struct arg_int* DOF;
     struct arg_dbl* pos;
-    struct arg_int* speed;
+    struct arg_dbl* rpm;
     struct arg_end* end;
 } servo_move_args;
 
@@ -39,10 +39,10 @@ static int cmd_servo_move(int argc, char** argv)
 
     assert(servo_move_args.DOF->count == 1);
     assert(servo_move_args.pos->count == 1);
-    assert(servo_move_args.speed->count == 1);
+    assert(servo_move_args.rpm->count == 1);
     const uint8_t DOF = servo_move_args.DOF->ival[0];
     const float pos = servo_move_args.pos->dval[0];
-    const uint8_t speed = servo_move_args.speed->ival[0];
+    const float rpm = servo_move_args.rpm->dval[0];
 
     if (DOF != 1 && DOF != 2 && DOF != 3 && DOF != 4 && DOF != 5 && DOF != 6)
     {
@@ -50,15 +50,15 @@ static int cmd_servo_move(int argc, char** argv)
         return 1;
     }
 
-    if (speed > 100)
+    if (rpm < 0.0f)
     {
         printf("wrong speed!\n");
         return 1;
     }
 
-    printf("moving servo: %d, to position: %f, with speed: %u ...\n", DOF, pos, speed);
+    printf("moving servo: %d, to position: %f, with speed: %f ...\n", DOF, pos, rpm);
 
-    single_DOF_move(DOF - 1, pos, speed);
+    single_DOF_move(DOF - 1, pos, rpm);
     wait_for_motors_stop();
 
     printf("done!\n");
@@ -75,7 +75,7 @@ static void register_servo_move()
 {
     servo_move_args.DOF = arg_int1(NULL, NULL, "<1|2|3|4|5|6>", "number of DOF (1 - 6)");
     servo_move_args.pos = arg_dbl1(NULL, NULL, "<float>", "desired position in degrees");
-    servo_move_args.speed = arg_int1(NULL, NULL, "<0-100>", "percent of speed (0 - 100 %)");
+    servo_move_args.rpm = arg_dbl1(NULL, NULL, "<float>", "RPM");
     servo_move_args.end = arg_end(4);
 
     const esp_console_cmd_t cmd = {
@@ -161,7 +161,7 @@ static struct {
     struct arg_dbl* phi;
     struct arg_dbl* psi;
     struct arg_dbl* theta;
-    struct arg_int* speed;
+    struct arg_dbl* rpm;
     struct arg_end* end;
 } robot_move_to_pos_args;
 
@@ -188,17 +188,17 @@ static int cmd_robot_move_to_pos(int argc, char** argv)
     assert(robot_move_to_pos_args.phi->count == 1);
     assert(robot_move_to_pos_args.psi->count == 1);
     assert(robot_move_to_pos_args.theta->count == 1);
-    assert(robot_move_to_pos_args.speed->count == 1);
+    assert(robot_move_to_pos_args.rpm->count == 1);
     const double x = robot_move_to_pos_args.x->dval[0];
     const double y = robot_move_to_pos_args.y->dval[0];
     const double z = robot_move_to_pos_args.z->dval[0];
     const double phi = robot_move_to_pos_args.phi->dval[0];
     const double psi = robot_move_to_pos_args.psi->dval[0];
     const double theta = robot_move_to_pos_args.theta->dval[0];
-    const uint8_t speed = (uint8_t)robot_move_to_pos_args.speed->ival[0];
+    const float rpm = robot_move_to_pos_args.rpm->dval[0];
 
     double desired_pos[6] = {x, y, z, phi, psi, theta};
-    robot_move_to_pos(desired_pos, speed);
+    robot_move_to_pos(desired_pos, rpm);
 
     return 0;
 }
@@ -216,12 +216,12 @@ static void register_robot_move_to_pos()
     robot_move_to_pos_args.phi = arg_dbl1(NULL, NULL, "<double>", "phi position in deg");
     robot_move_to_pos_args.psi = arg_dbl1(NULL, NULL, "<double>", "psi position in deg");
     robot_move_to_pos_args.theta = arg_dbl1(NULL, NULL, "<double>", "theta position in deg");
-    robot_move_to_pos_args.speed = arg_int1(NULL, NULL, "<0-100>", "percent of speed (0 - 100 %)");
+    robot_move_to_pos_args.rpm = arg_dbl1(NULL, NULL, "<float>", "speed in RPM");
     servo_get_pos_args.end = arg_end(10);
 
     const esp_console_cmd_t cmd = {
         .command = "robot_move_to_pos",
-        .help = "Move robot end effector to a desired position",
+        .help = "Move robot end effector to a desired position with desired speed in RPM",
         .hint = NULL,
         .func = &cmd_robot_move_to_pos,
         .argtable = &robot_move_to_pos_args

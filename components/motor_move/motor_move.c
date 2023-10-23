@@ -27,6 +27,60 @@ static const char nvs_key[][NVS_DATA_KEY_SIZE] = {
 
 
 /**
+ * @brief calculate normalized speed for desired motor
+ * 
+ * @param DOF number of DOF
+ * @param rpm desired speed in rpm
+ * @return calculated speed
+ */
+static int16_t calc_speed(uint8_t DOF, float rpm)
+{
+    int16_t speed = 0;
+
+    if (rpm > 0.0f)
+    {
+        if (DOF == 0 || DOF == 2)
+        {
+            speed = (int16_t)(rpm / EMM42_MAX_RPM * 1279.0f);
+            if (speed > 1279)
+            {
+                ESP_LOGW(TAG, "emm42 servo: too high speed!");
+                speed = 1279;
+            }
+        }
+        else if (DOF == 1)
+        {
+            speed = (int16_t)(rpm / MKS_MAX_RPM * 1279.0f);
+            if (speed > 1279)
+            {
+                ESP_LOGW(TAG, "mks servo: too high speed!");
+                speed = 1279;
+            }
+        }
+        else if (DOF == 3 || DOF == 4 || DOF == 5)
+        {
+            speed = (int16_t)(rpm / AX_MAX_RPM * 1023.0f);
+            if (speed > 1023)
+            {
+                ESP_LOGW(TAG, "AX servo: too high speed!");
+                speed = 1023;
+            }
+        }
+        else
+        {
+            ESP_LOGW(TAG, "calc_speed: invalid DOF!");
+        }
+
+        // prevent locking engines at too low speed
+        if (speed == 0)
+            speed = 1;
+    }
+
+    return speed;
+}
+
+
+/**
  * @brief get motors position
  * 
  * @param DOF number of DOF
@@ -65,7 +119,7 @@ float get_motor_pos(uint8_t DOF)
 
     // convert servo position to degrees
     if (DOF == 0 || DOF == 1 || DOF == 2)
-        position = position / (float)GEAR_RATIO;
+        position = position / GEAR_RATIO;
     else if (DOF == 3 || DOF == 4 || DOF == 5)
         position = position / 1023.0f * 300.0f - 150.0f;
 
@@ -151,19 +205,23 @@ void wait_for_motors_stop()
  * 
  * @param DOF number of DOF
  * @param position desired position in degrees
- * @param speed_percent percent of speed (0 - 100 %)
+ * @param rpm desired speed in rpm
  */
-void single_DOF_move(uint8_t DOF, float position, uint8_t speed_percent)
+void single_DOF_move(uint8_t DOF, float position, float rpm)
 {
     uint32_t pulses = 0;
     uint16_t AX_pos = 0;
 
     int16_t speed = 0;
 
-    if (speed > 100)
+    if (rpm > 0.0f)
     {
-        ESP_LOGW(TAG, "too high speed!");
-        speed = 100;
+        speed = calc_speed(DOF, rpm);
+    }
+    else if (rpm < 0.0f)
+    {
+        speed = calc_speed(DOF, -rpm);
+        position = -position;
     }
 
     if (DOF == 0 || DOF == 1 || DOF == 2)
@@ -174,10 +232,8 @@ void single_DOF_move(uint8_t DOF, float position, uint8_t speed_percent)
         cur_motor_pos = motor_pos[DOF];
         portEXIT_CRITICAL(&motor_spinlock);
 
-        speed = (int16_t)((float)speed_percent / 100.0f * 1279.0f);
-
         // convert position in degrees to pulses
-        pulses = (uint32_t)(fabs(position - cur_motor_pos) / 360.0f * (float)FULL_ROT) * GEAR_RATIO;
+        pulses = (uint32_t)(fabs(position - cur_motor_pos) / 360.0f * (float)FULL_ROT * GEAR_RATIO);
 
         // CW orientation
         if (DOF == 1)
@@ -193,8 +249,6 @@ void single_DOF_move(uint8_t DOF, float position, uint8_t speed_percent)
     }
     else if (DOF == 3 || DOF == 4 || DOF == 5)
     {
-        speed = (int16_t)((float)speed_percent / 100.0f * 1023.0f);
-
         // convert position in degrees to AX servo position
         AX_pos = (uint16_t)((position + 150.0f) / 300.0f * 1023.0f);
 
@@ -223,13 +277,16 @@ void single_DOF_move(uint8_t DOF, float position, uint8_t speed_percent)
             emm42_servo_uart_move(emm42_conf, 3, speed, EMM42_ACCEL, pulses);
             break;
         case 3:
-            AX_servo_set_pos_w_spd(AX_conf, 4, AX_pos, speed);
+            if (speed != 0)
+                AX_servo_set_pos_w_spd(AX_conf, 4, AX_pos, speed);
             break;
         case 4:
-            AX_servo_set_pos_w_spd(AX_conf, 5, AX_pos, speed);
+            if (speed != 0)
+                AX_servo_set_pos_w_spd(AX_conf, 5, AX_pos, speed);
             break;
         case 5:
-            AX_servo_set_pos_w_spd(AX_conf, 6, AX_pos, speed);
+            if (speed != 0)
+                AX_servo_set_pos_w_spd(AX_conf, 6, AX_pos, speed);
             break;
         default:
             ESP_LOGW(TAG, "invalid DOF!");
@@ -245,7 +302,7 @@ void single_DOF_move(uint8_t DOF, float position, uint8_t speed_percent)
 
         if (DOF == 0 || DOF == 1 || DOF == 2)
         {
-            update_pos = (float)(speed/abs(speed)) * (float)pulses / (float)FULL_ROT * 360.0f / (float)GEAR_RATIO;
+            update_pos = (float)(speed/abs(speed)) * (float)pulses / (float)FULL_ROT * 360.0f / GEAR_RATIO;
 
             if (DOF == 1) // CW orientation
                 update_pos = -update_pos;
@@ -270,9 +327,9 @@ void single_DOF_move(uint8_t DOF, float position, uint8_t speed_percent)
  * @brief move end effector of robot to desired position with desired speed
  * 
  * @param desired_pos pointer to array with desired position in mm and degrees
- * @param speed_percent percent of speed (0 - 100 %)
+ * @param rpm desired speed in rpm
  */
-void robot_move_to_pos(double* desired_pos, uint8_t speed_percent)
+void robot_move_to_pos(double* desired_pos, float rpm)
 {
     double joint_pos[MOTORS_NUM];
 
@@ -282,8 +339,7 @@ void robot_move_to_pos(double* desired_pos, uint8_t speed_percent)
     calc_inv_kin(desired_pos, joint_pos);
 
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
-        single_DOF_move(i, (float)joint_pos[i], speed_percent);
-
+        single_DOF_move(i, (float)joint_pos[i], rpm);
     wait_for_motors_stop();
 }
 

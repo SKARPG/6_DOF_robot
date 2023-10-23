@@ -7,17 +7,17 @@
 #include "motor_move.h"
 #include "console_api.h"
 
-#define UART_NUM    UART_NUM_2
-#define UART_BAUD   115200
-#define TX_PIN      17
-#define RX_PIN      16
-#define RTS_PIN     15
+#define UART_NUM     UART_NUM_2
+#define UART_BAUD    115200
+#define TX_PIN       17
+#define RX_PIN       16
+#define RTS_PIN      15
 
 #define RPI_INTR_PIN 19
 
-#define I2C_NUM I2C_NUM_0
-#define I2C_SDA 21
-#define I2C_SCL 22
+#define I2C_NUM      I2C_NUM_0
+#define I2C_SDA      21
+#define I2C_SCL      22
 
 static const char *TAG = "main";
 
@@ -98,7 +98,8 @@ void app_main(void)
     }
 */
 
-    // go back to zero position
+    // go back to zero position before power off
+
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
         single_DOF_move(i, 0.0f, speed);
     wait_for_motors_stop();
