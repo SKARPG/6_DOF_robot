@@ -19,20 +19,25 @@
 #include "mks_servo.h"
 #include "emm42_servo.h"
 #include "inv_kin.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 
 #define MOTORS_NUM 6 // number of motors
 
-#define EMM42_POS_TRESHOLD 1.8f // emm42 servo position treshold
+#define EMM42_POS_TRESHOLD 0.5f // emm42 servo position treshold
 #define MKS_POS_TRESHOLD 1.8f // MKS servo position treshold
 #define AX_POS_TRESHOLD 1.0f // AX servo position treshold
 
 #define FULL_ROT 200 // full rotation of motor in steps
-#define GEAR_RATIO 76 // gearbox ratio
+#define GEAR_RATIO 38 // gearbox ratio
 
 #define EMM42_ACCEL 255 // emm42 servo acceleration
 #define MKS_ACCEL 0 // MKS servo acceleration
 
 #define UART_WAIT (10 / portTICK_PERIOD_MS) // UART wait time
+
+#define FLOAT_PRECISION 100000.0f // float precision
+#define NVS_DATA_KEY_SIZE 10 // NVS key size
 
 
 float get_motor_pos(uint8_t DOF);
@@ -46,3 +51,7 @@ void robot_move_to_pos(double* desired_pos, uint8_t speed_percent);
 void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config, rpi_i2c_conf_t* rpi_i2c_config);
 
 void motor_deinit();
+
+void motor_zero_pos(uint8_t DOF);
+
+void motor_reset_zero_pos(uint8_t DOF);

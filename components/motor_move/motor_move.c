@@ -18,6 +18,12 @@ static AX_conf_t AX_conf; // struct with AX servo parameters
 static emm42_conf_t emm42_conf; // struct with emm42 servo parameters
 static mks_conf_t mks_conf; // struct with mks servo parameters
 static float motor_pos[MOTORS_NUM]; // array with current positions for each motor in degrees
+static float motor_pos_offset[MOTORS_NUM]; // array with motor position offsets in degrees
+
+static nvs_handle_t zero_pos_handle; // handle for nvs storage
+static const char nvs_key[][NVS_DATA_KEY_SIZE] = {
+    "nvs_data0", "nvs_data1", "nvs_data2", "nvs_data3", "nvs_data4", "nvs_data5"
+}; // array with nvs keys (for positions offsets)
 
 
 /**
@@ -62,6 +68,11 @@ float get_motor_pos(uint8_t DOF)
         position = position / (float)GEAR_RATIO;
     else if (DOF == 3 || DOF == 4 || DOF == 5)
         position = position / 1023.0f * 300.0f - 150.0f;
+
+    // position from zero point
+    portENTER_CRITICAL(&motor_spinlock);
+    position -= motor_pos_offset[DOF];
+    portEXIT_CRITICAL(&motor_spinlock);
 
     return position;
 }
@@ -322,6 +333,45 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
         }
     }
 
+    // initialize NVS
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ESP_ERROR_CHECK(nvs_flash_init());
+    }
+
+    // open Non-Volatile Storage (NVS) handle
+    err = nvs_open("zero_pos", NVS_READWRITE, &zero_pos_handle);
+    if (err != ESP_OK)
+        ESP_LOGE(TAG, "Error (%s) opening NVS handle!", esp_err_to_name(err));
+
+    // read zero position from NVS
+    for (uint32_t i = 0; i < MOTORS_NUM; i++)
+    {
+        // set default value to 0, if not set yet in NVS
+        int32_t data = 0;
+
+        err = nvs_get_i32(zero_pos_handle, nvs_key[i], &data);
+        switch (err)
+        {
+            case ESP_OK:
+                portENTER_CRITICAL(&motor_spinlock);
+                motor_pos_offset[i] = (float)data / FLOAT_PRECISION;
+                portEXIT_CRITICAL(&motor_spinlock);
+                break;
+            case ESP_ERR_NVS_NOT_FOUND:
+                portENTER_CRITICAL(&motor_spinlock);
+                motor_pos_offset[i] = 0.0f;
+                portEXIT_CRITICAL(&motor_spinlock);
+
+                ESP_LOGW(TAG, "The value is not initialized yet!");
+                break;
+            default :
+                ESP_LOGE(TAG, "Error (%s) reading!", esp_err_to_name(err));
+        }
+    }
+
     float cur_pos = 0.0f;
 
     // get all motors positions
@@ -349,4 +399,65 @@ void motor_deinit()
     deinit_rpi_i2c();
 
     vTaskDelay(UART_WAIT);
+
+    nvs_close(zero_pos_handle);
+}
+
+
+/**
+ * @brief set current motor position as zero
+ * 
+ * @param DOF motor address
+ */
+void motor_zero_pos(uint8_t DOF)
+{
+    // zero offset
+    portENTER_CRITICAL(&motor_spinlock);
+    motor_pos_offset[DOF] = 0.0f;
+    portEXIT_CRITICAL(&motor_spinlock);
+
+    // get new offset from global zero position
+    float offset = get_motor_pos(DOF);
+
+    portENTER_CRITICAL(&motor_spinlock);
+    motor_pos_offset[DOF] = offset;
+    motor_pos[DOF] -= offset;
+    portEXIT_CRITICAL(&motor_spinlock);
+
+    // write zero position to nvs
+    int32_t data = (int32_t)(offset * FLOAT_PRECISION);
+    esp_err_t err = nvs_set_i32(zero_pos_handle, nvs_key[DOF], data);
+    if (err != ESP_OK)
+        ESP_LOGE(TAG, "Error (%s) setting NVS value!", esp_err_to_name(err));
+
+    // commit written value
+    err = nvs_commit(zero_pos_handle);
+    if (err != ESP_OK)
+        ESP_LOGE(TAG, "Error (%s) committing NVS!", esp_err_to_name(err));
+}
+
+
+/**
+ * @brief set global zero position as zero
+ * 
+ * @param DOF motor address
+ */
+void motor_reset_zero_pos(uint8_t DOF)
+{
+    // zero offset
+    portENTER_CRITICAL(&motor_spinlock);
+    motor_pos_offset[DOF] = 0.0f;
+    motor_pos[DOF] = 0.0f;
+    portEXIT_CRITICAL(&motor_spinlock);
+
+    // write zero position to nvs
+    int32_t data = 0;
+    esp_err_t err = nvs_set_i32(zero_pos_handle, nvs_key[DOF], data);
+    if (err != ESP_OK)
+        ESP_LOGE(TAG, "Error (%s) setting NVS value!", esp_err_to_name(err));
+
+    // commit written value
+    err = nvs_commit(zero_pos_handle);
+    if (err != ESP_OK)
+        ESP_LOGE(TAG, "Error (%s) committing NVS!", esp_err_to_name(err));
 }

@@ -13,11 +13,11 @@
 #define RX_PIN      16
 #define RTS_PIN     15
 
-#define RPI_INTR_PIN 18
+#define RPI_INTR_PIN 19
 
 #define I2C_NUM I2C_NUM_0
-#define I2C_SDA 23
-#define I2C_SCL 19
+#define I2C_SDA 21
+#define I2C_SCL 22
 
 static const char *TAG = "main";
 
@@ -58,15 +58,16 @@ void app_main(void)
     // desired end effector position for inverse kinematics
     double desired_pos[6] = {X_ZERO, Y_ZERO, Z_ZERO, PHI_ZERO, PSI_ZERO, THETA_ZERO};
 
-    int16_t speed = 5;
+    int16_t speed = 10;
 
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
         single_DOF_move(i, 0.0f, speed);
     wait_for_motors_stop();
 
     // start console
-    // console_api_start();
+    console_api_start();
 
+/*
     while (1)
     {
         // mm
@@ -95,4 +96,15 @@ void app_main(void)
         robot_move_to_pos(desired_pos, speed);
         ESP_LOGI(TAG, "moved to position 1");
     }
+*/
+
+    // go back to zero position
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        single_DOF_move(i, 0.0f, speed);
+    wait_for_motors_stop();
+
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        motor_reset_zero_pos(i);
+
+    motor_deinit();
 }
