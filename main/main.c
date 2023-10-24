@@ -58,10 +58,10 @@ void app_main(void)
     // desired end effector position for inverse kinematics
     double desired_pos[6] = {X_ZERO, Y_ZERO, Z_ZERO, PHI_ZERO, PSI_ZERO, THETA_ZERO};
 
-    int16_t speed = 10;
+    float rpm = 15.0f;
 
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
-        single_DOF_move(i, 0.0f, speed);
+        single_DOF_move(i, 0.0f, rpm);
     wait_for_motors_stop();
 
     // start console
@@ -80,7 +80,7 @@ void app_main(void)
         desired_pos[5] = 49.0f;
 
         ESP_LOGI(TAG, "moving to position 0");
-        robot_move_to_pos(desired_pos, speed);
+        robot_move_to_pos(desired_pos, rpm);
         ESP_LOGI(TAG, "moved to position 0");
 
         // mm
@@ -93,19 +93,15 @@ void app_main(void)
         desired_pos[5] = 52.0f;
 
         ESP_LOGI(TAG, "moving to position 1");
-        robot_move_to_pos(desired_pos, speed);
+        robot_move_to_pos(desired_pos, rpm);
         ESP_LOGI(TAG, "moved to position 1");
     }
 */
 
     // go back to zero position before power off
-
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
-        single_DOF_move(i, 0.0f, speed);
+        single_DOF_move(i, 0.0f, 10.0f);
     wait_for_motors_stop();
-
-    for (uint8_t i = 0; i < MOTORS_NUM; i++)
-        motor_reset_zero_pos(i);
 
     motor_deinit();
 }

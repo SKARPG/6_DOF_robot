@@ -426,6 +426,44 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
             default :
                 ESP_LOGE(TAG, "Error (%s) reading!", esp_err_to_name(err));
         }
+
+        // check if main power went off
+        portENTER_CRITICAL(&motor_spinlock);
+        float offset = motor_pos_offset[i];
+        portEXIT_CRITICAL(&motor_spinlock);
+
+        float tresh = 0.0f;
+        switch (i)
+        {
+            case 0:
+                tresh = EMM42_POS_TRESHOLD;
+                break;
+            case 1:
+                tresh = MKS_POS_TRESHOLD;
+                break;
+            case 2:
+                tresh = EMM42_POS_TRESHOLD;
+                break;
+            case 3:
+                tresh = AX_POS_TRESHOLD;
+                break;
+            case 4:
+                tresh = AX_POS_TRESHOLD;
+                break;
+            case 5:
+                tresh = AX_POS_TRESHOLD;
+                break;
+            default:
+                ESP_LOGW(TAG, "invalid DOF");
+                break;
+        }
+
+        if (fabs(get_motor_pos(i) + offset) < tresh)
+        {
+            portENTER_CRITICAL(&motor_spinlock);
+            motor_pos_offset[i] = 0.0f;
+            portEXIT_CRITICAL(&motor_spinlock);
+        }
     }
 
     float cur_pos = 0.0f;
@@ -465,7 +503,7 @@ void motor_deinit()
  * 
  * @param DOF motor address
  */
-void motor_zero_pos(uint8_t DOF)
+void motor_set_zero_pos(uint8_t DOF)
 {
     // zero offset
     portENTER_CRITICAL(&motor_spinlock);
@@ -477,7 +515,7 @@ void motor_zero_pos(uint8_t DOF)
 
     portENTER_CRITICAL(&motor_spinlock);
     motor_pos_offset[DOF] = offset;
-    motor_pos[DOF] -= offset;
+    motor_pos[DOF] = 0.0f;
     portEXIT_CRITICAL(&motor_spinlock);
 
     // write zero position to nvs
@@ -490,30 +528,6 @@ void motor_zero_pos(uint8_t DOF)
     err = nvs_commit(zero_pos_handle);
     if (err != ESP_OK)
         ESP_LOGE(TAG, "Error (%s) committing NVS!", esp_err_to_name(err));
-}
 
-
-/**
- * @brief set global zero position as zero
- * 
- * @param DOF motor address
- */
-void motor_reset_zero_pos(uint8_t DOF)
-{
-    // zero offset
-    portENTER_CRITICAL(&motor_spinlock);
-    motor_pos_offset[DOF] = 0.0f;
-    motor_pos[DOF] = 0.0f;
-    portEXIT_CRITICAL(&motor_spinlock);
-
-    // write zero position to nvs
-    int32_t data = 0;
-    esp_err_t err = nvs_set_i32(zero_pos_handle, nvs_key[DOF], data);
-    if (err != ESP_OK)
-        ESP_LOGE(TAG, "Error (%s) setting NVS value!", esp_err_to_name(err));
-
-    // commit written value
-    err = nvs_commit(zero_pos_handle);
-    if (err != ESP_OK)
-        ESP_LOGE(TAG, "Error (%s) committing NVS!", esp_err_to_name(err));
+    vTaskDelay(100 / portTICK_PERIOD_MS);
 }

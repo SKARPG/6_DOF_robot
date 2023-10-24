@@ -32,7 +32,7 @@
 #define GEAR_RATIO 38.4f // gearbox ratio
 
 #define EMM42_MAX_RPM (2200.0f / GEAR_RATIO) // emm42 servo maximum RPM
-#define MKS_MAX_RPM (((1279.0f * 6000.0f) / (float)(FULL_ROT)) / GEAR_RATIO) // MKS servo maximum RPM
+#define MKS_MAX_RPM (((1279.0f * 6000.0f) / (float)FULL_ROT) / GEAR_RATIO) // MKS servo maximum RPM
 #define AX_MAX_RPM 114.0f // AX servo maximum RPM
 
 #define EMM42_ACCEL 255 // emm42 servo acceleration
@@ -56,6 +56,4 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
 
 void motor_deinit();
 
-void motor_zero_pos(uint8_t DOF);
-
-void motor_reset_zero_pos(uint8_t DOF);
+void motor_set_zero_pos(uint8_t DOF);

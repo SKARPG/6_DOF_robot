@@ -36,3 +36,14 @@ cmake --build .
 
 Then setup this program as a startup program following these instructions:
 https://learn.sparkfun.com/tutorials/how-to-run-a-raspberry-pi-program-on-startup#method-3-systemd
+
+## Motor homing
+In order not to lose motor home position it is necessary to go back to zero position before ending work with robot.
+
+Use:
+```c
+// go back to zero position before power off
+for (uint8_t i = 0; i < MOTORS_NUM; i++)
+    single_DOF_move(i, 0.0f, 10.0f);
+wait_for_motors_stop();
+```
