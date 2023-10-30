@@ -58,7 +58,7 @@ void app_main(void)
     // desired end effector position for inverse kinematics
     double desired_pos[6] = {X_ZERO, Y_ZERO, Z_ZERO, PHI_ZERO, PSI_ZERO, THETA_ZERO};
 
-    float rpm = 15.0f;
+    float rpm = 5.0f;
 
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
         single_DOF_move(i, 0.0f, rpm);

@@ -73,9 +73,9 @@ static int cmd_servo_move(int argc, char** argv)
  */
 static void register_servo_move()
 {
-    servo_move_args.DOF = arg_int1(NULL, NULL, "<1|2|3|4|5|6>", "number of DOF (1 - 6)");
-    servo_move_args.pos = arg_dbl1(NULL, NULL, "<float>", "desired position in degrees");
-    servo_move_args.rpm = arg_dbl1(NULL, NULL, "<float>", "RPM");
+    servo_move_args.DOF = arg_int1(NULL, NULL, "<DOF>", "number of DOF (1|2|3|4|5|6)");
+    servo_move_args.pos = arg_dbl1(NULL, NULL, "<pos>", "desired position in degrees (float)");
+    servo_move_args.rpm = arg_dbl1(NULL, NULL, "<rpm>", "speed in RPM (float)");
     servo_move_args.end = arg_end(4);
 
     const esp_console_cmd_t cmd = {
@@ -138,7 +138,7 @@ static int cmd_servo_get_pos(int argc, char** argv)
  */
 static void register_servo_get_pos()
 {
-    servo_get_pos_args.DOF = arg_int1(NULL, NULL, "<1|2|3|4|5|6>", "number of DOF (1 - 6)");
+    servo_get_pos_args.DOF = arg_int1(NULL, NULL, "<DOF>", "number of DOF (1|2|3|4|5|6)");
     servo_get_pos_args.end = arg_end(2);
 
     const esp_console_cmd_t cmd = {
@@ -178,7 +178,7 @@ static int cmd_robot_move_to_pos(int argc, char** argv)
     int nerrors = arg_parse(argc, argv, (void**)&robot_move_to_pos_args);
     if (nerrors != 0)
     {
-        arg_print_errors(stderr, servo_get_pos_args.end, argv[0]);
+        arg_print_errors(stderr, robot_move_to_pos_args.end, argv[0]);
         return 1;
     }
 
@@ -210,14 +210,14 @@ static int cmd_robot_move_to_pos(int argc, char** argv)
  */
 static void register_robot_move_to_pos()
 {
-    robot_move_to_pos_args.x = arg_dbl1(NULL, NULL, "<double>", "x position in mm");
-    robot_move_to_pos_args.y = arg_dbl1(NULL, NULL, "<double>", "y position in mm");
-    robot_move_to_pos_args.z = arg_dbl1(NULL, NULL, "<double>", "z position in mm");
-    robot_move_to_pos_args.phi = arg_dbl1(NULL, NULL, "<double>", "phi position in deg");
-    robot_move_to_pos_args.psi = arg_dbl1(NULL, NULL, "<double>", "psi position in deg");
-    robot_move_to_pos_args.theta = arg_dbl1(NULL, NULL, "<double>", "theta position in deg");
-    robot_move_to_pos_args.rpm = arg_dbl1(NULL, NULL, "<float>", "speed in RPM");
-    servo_get_pos_args.end = arg_end(10);
+    robot_move_to_pos_args.x = arg_dbl1(NULL, NULL, "<x>", "x position in mm (double)");
+    robot_move_to_pos_args.y = arg_dbl1(NULL, NULL, "<y>", "y position in mm (double)");
+    robot_move_to_pos_args.z = arg_dbl1(NULL, NULL, "<z>", "z position in mm (double)");
+    robot_move_to_pos_args.phi = arg_dbl1(NULL, NULL, "<phi>", "phi position in deg (double)");
+    robot_move_to_pos_args.psi = arg_dbl1(NULL, NULL, "<psi>", "psi position in deg (double)");
+    robot_move_to_pos_args.theta = arg_dbl1(NULL, NULL, "<theta>", "theta position in deg (double)");
+    robot_move_to_pos_args.rpm = arg_dbl1(NULL, NULL, "<rpm>", "speed in RPM (float)");
+    robot_move_to_pos_args.end = arg_end(10);
 
     const esp_console_cmd_t cmd = {
         .command = "robot_move_to_pos",
@@ -279,7 +279,7 @@ static int cmd_servo_set_zero_pos(int argc, char** argv)
  */
 static void register_servo_set_zero_pos()
 {
-    servo_set_zero_pos_args.DOF = arg_int1(NULL, NULL, "<1|2|3|4|5|6>", "number of DOF (1 - 6)");
+    servo_set_zero_pos_args.DOF = arg_int1(NULL, NULL, "<DOF>", "number of DOF (1|2|3|4|5|6)");
     servo_set_zero_pos_args.end = arg_end(2);
 
     const esp_console_cmd_t cmd = {
@@ -359,7 +359,7 @@ static void init_console()
         .source_clk = UART_SCLK_DEFAULT
     };
 
-    ESP_ERROR_CHECK(uart_driver_install(CONSOLE_UART_NUM, 256, 0, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_driver_install(CONSOLE_UART_NUM, 1024, 0, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_param_config(CONSOLE_UART_NUM, &uart_config));
 
     // tell VFS to use UART driver
@@ -367,8 +367,8 @@ static void init_console()
 
     // initialize console
     esp_console_config_t console_config = {
-        .max_cmdline_args = 8,
-        .max_cmdline_length = 256,
+        .max_cmdline_args = 12,
+        .max_cmdline_length = 1024,
         .hint_color = atoi(LOG_COLOR_CYAN)
     };
     ESP_ERROR_CHECK(esp_console_init(&console_config));
