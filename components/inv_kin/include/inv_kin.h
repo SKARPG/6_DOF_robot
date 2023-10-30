@@ -12,10 +12,20 @@
 #define DATA_ACCURACY 10000.0f
 #define INIT_KEY 0x05
 
+// robot dimensions in mm
+#define DELTA0          77.5
+#define DELTA1          96.35
+#define L0              226.231
+#define DELTA2          83.594
+#define L1              192.487
+#define DELTA3          62.423
+#define DELTA4          62.427
+#define DELTA5          25.94
+
 // zero position in mm
 #define X_ZERO          0.0f
-#define Y_ZERO          37.0f
-#define Z_ZERO          593.0f
+#define Y_ZERO          (DELTA1 - DELTA2 + DELTA3 - DELTA5)
+#define Z_ZERO          (DELTA0 + L0 + L1 + DELTA4)
 
 // zero orientation in radians
 #define PHI_ZERO        90.0f

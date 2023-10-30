@@ -93,13 +93,13 @@ float get_motor_pos(uint8_t DOF)
     switch (DOF)
     {
         case 0:
-            position = emm42_servo_uart_read_motor_pos(emm42_conf, 1);
+            position = -emm42_servo_uart_read_motor_pos(emm42_conf, 1); // CCW orientation
             break;
         case 1:
-            position = -mks_servo_uart_read_encoder(mks_conf, 2); // CW orientation
+            position = mks_servo_uart_read_encoder(mks_conf, 2);
             break;
         case 2:
-            position = emm42_servo_uart_read_motor_pos(emm42_conf, 3);
+            position = -emm42_servo_uart_read_motor_pos(emm42_conf, 3); // CCW orientation
             break;
         case 3:
             position = (float)AX_servo_get_pos(AX_conf, 4);
@@ -235,8 +235,8 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
         // convert position in degrees to pulses
         pulses = (uint32_t)(fabs(position - cur_motor_pos) / 360.0f * (float)FULL_ROT * GEAR_RATIO);
 
-        // CW orientation
-        if (DOF == 1)
+        // CCW orientation
+        if (DOF == 0 || DOF == 2)
         {
             if (position < cur_motor_pos)
                 speed = -speed;
@@ -304,7 +304,7 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
         {
             update_pos = (float)(speed/abs(speed)) * (float)pulses / (float)FULL_ROT * 360.0f / GEAR_RATIO;
 
-            if (DOF == 1) // CW orientation
+            if (DOF == 0 || DOF == 2) // CCW orientation
                 update_pos = -update_pos;
 
             portENTER_CRITICAL(&motor_spinlock);

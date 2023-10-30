@@ -8,12 +8,11 @@
     * `servo_get_pos <1|2|3|4|5|6>` - gets servo position,
     * `robot_move_to_pos <double> <double> <double> <double> <double> <double> <float>` - moves robot end effector to a desired position with desired speed in RPM,
     * `servo_set_zero_pos <1|2|3|4|5|6>` - sets current position of a servo as zero.
+* `ctrl + c` exits the console.
 
 ## To do list:
 * debug and test
-* check if parameters are being parsed correctly
 * register rest of the commands
-* get rid of artifacts in console
 
 ## Sources
 https://github.com/JanG175/6_DOF_robot/tree/763b2879e24a50b3380067f1b9e4b25f2b77ebfa/components/console
