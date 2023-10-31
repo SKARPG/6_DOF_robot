@@ -68,10 +68,9 @@ void app_main(void)
     // start console
     console_api_start();
 
-    // go back to zero position before power off
+    // save encoders position before power off
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
-        single_DOF_move(i, 0.0f, 3.0f);
-    wait_for_motors_stop();
+        motor_save_enc_states(i);
 
     motor_deinit();
 

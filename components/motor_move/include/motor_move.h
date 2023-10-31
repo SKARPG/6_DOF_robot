@@ -41,7 +41,7 @@
 #define UART_WAIT (10 / portTICK_PERIOD_MS) // UART wait time
 
 #define FLOAT_PRECISION 100000.0f // float precision
-#define NVS_DATA_KEY_SIZE 10 // NVS key size
+#define NVS_DATA_KEY_SIZE 12 // NVS key size
 
 
 float get_motor_pos(uint8_t DOF);
@@ -57,3 +57,5 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
 void motor_deinit();
 
 void motor_set_zero_pos(uint8_t DOF);
+
+void motor_save_enc_states(uint8_t DOF);

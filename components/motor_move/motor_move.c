@@ -18,12 +18,12 @@ static AX_conf_t AX_conf; // struct with AX servo parameters
 static emm42_conf_t emm42_conf; // struct with emm42 servo parameters
 static mks_conf_t mks_conf; // struct with mks servo parameters
 static float motor_pos[MOTORS_NUM]; // array with current positions for each motor in degrees
-static float motor_pos_offset[MOTORS_NUM]; // array with motor position offsets in degrees
+static float motor_pos_offset[MOTORS_NUM]; // array with saved motor position offsets in degrees
 
 static nvs_handle_t zero_pos_handle; // handle for nvs storage
-static const char nvs_key[][NVS_DATA_KEY_SIZE] = {
-    "nvs_data0", "nvs_data1", "nvs_data2", "nvs_data3", "nvs_data4", "nvs_data5"
-}; // array with nvs keys (for positions offsets)
+static const char nvs_offset_key[][NVS_DATA_KEY_SIZE] = {
+    "nvs_offset0", "nvs_offset1", "nvs_offset2", "nvs_offset3", "nvs_offset4", "nvs_offset5"
+}; // array with nvs keys for positions offsets
 
 
 /**
@@ -419,7 +419,7 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
         // set default value to 0, if not set yet in NVS
         int32_t data = 0;
 
-        err = nvs_get_i32(zero_pos_handle, nvs_key[i], &data);
+        err = nvs_get_i32(zero_pos_handle, nvs_offset_key[i], &data);
         switch (err)
         {
             case ESP_OK:
@@ -437,65 +437,12 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
             default :
                 ESP_LOGE(TAG, "Error (%s) reading!", esp_err_to_name(err));
         }
-
-        // check if main power went off
-        portENTER_CRITICAL(&motor_spinlock);
-        float offset = motor_pos_offset[i];
-        portEXIT_CRITICAL(&motor_spinlock);
-
-        float tresh = 0.0f;
-        switch (i)
-        {
-            case 0:
-                tresh = EMM42_POS_TRESHOLD;
-                break;
-            case 1:
-                tresh = MKS_POS_TRESHOLD;
-                break;
-            case 2:
-                tresh = EMM42_POS_TRESHOLD;
-                break;
-            case 3:
-                tresh = AX_POS_TRESHOLD;
-                break;
-            case 4:
-                tresh = AX_POS_TRESHOLD;
-                break;
-            case 5:
-                tresh = AX_POS_TRESHOLD;
-                break;
-            default:
-                ESP_LOGW(TAG, "invalid DOF");
-                break;
-        }
-
-        ///////////////////////////////////
-        portENTER_CRITICAL(&motor_spinlock);
-        motor_pos_offset[i] = 0.0f;
-        portEXIT_CRITICAL(&motor_spinlock);
-        ///////////////////////////////////
-
-        // check if motor is at zero position
-        if (fabs(get_motor_pos(i) + offset) < tresh)
-        {
-            portENTER_CRITICAL(&motor_spinlock);
-            motor_pos_offset[i] = 0.0f;
-            portEXIT_CRITICAL(&motor_spinlock);
-        }
-        else
-        {
-            portENTER_CRITICAL(&motor_spinlock);
-            motor_pos_offset[i] = offset;
-            portEXIT_CRITICAL(&motor_spinlock);
-        }
     }
-
-    float cur_pos = 0.0f;
 
     // get all motors positions
     for (uint32_t i = 0; i < MOTORS_NUM; i++)
     {
-        cur_pos = get_motor_pos(i);
+        float cur_pos = get_motor_pos(i);
 
         portENTER_CRITICAL(&motor_spinlock);
         motor_pos[i] = cur_pos;
@@ -544,7 +491,41 @@ void motor_set_zero_pos(uint8_t DOF)
 
     // write zero position to nvs
     int32_t data = (int32_t)(offset * FLOAT_PRECISION);
-    esp_err_t err = nvs_set_i32(zero_pos_handle, nvs_key[DOF], data);
+    esp_err_t err = nvs_set_i32(zero_pos_handle, nvs_offset_key[DOF], data);
+    if (err != ESP_OK)
+        ESP_LOGE(TAG, "Error (%s) setting NVS value!", esp_err_to_name(err));
+
+    // commit written value
+    err = nvs_commit(zero_pos_handle);
+    if (err != ESP_OK)
+        ESP_LOGE(TAG, "Error (%s) committing NVS!", esp_err_to_name(err));
+
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+}
+
+
+/**
+ * @brief save encoder position to nvs
+ * 
+ * @param DOF motor address
+ */
+void motor_save_enc_states(uint8_t DOF)
+{
+    portENTER_CRITICAL(&motor_spinlock);
+    float offset = motor_pos_offset[DOF];
+    portEXIT_CRITICAL(&motor_spinlock);
+
+    // get_motor_pos(DOF) = pos - offset
+    float enc = get_motor_pos(DOF) + offset;
+    offset -= enc;
+
+    portENTER_CRITICAL(&motor_spinlock);
+    motor_pos_offset[DOF] = offset;
+    portEXIT_CRITICAL(&motor_spinlock);
+
+    // write zero position to nvs
+    int32_t data = (int32_t)(offset * FLOAT_PRECISION);
+    esp_err_t err = nvs_set_i32(zero_pos_handle, nvs_offset_key[DOF], data);
     if (err != ESP_OK)
         ESP_LOGE(TAG, "Error (%s) setting NVS value!", esp_err_to_name(err));
 
