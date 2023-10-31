@@ -44,6 +44,6 @@ Use:
 ```c
 // go back to zero position before power off
 for (uint8_t i = 0; i < MOTORS_NUM; i++)
-    single_DOF_move(i, 0.0f, 10.0f);
+    single_DOF_move(i, 0.0f, 3.0f);
 wait_for_motors_stop();
 ```

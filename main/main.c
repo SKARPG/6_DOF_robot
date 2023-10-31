@@ -60,6 +60,7 @@ void app_main(void)
 
     float rpm = 5.0f;
 
+    // go to zero position
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
         single_DOF_move(i, 0.0f, rpm);
     wait_for_motors_stop();
@@ -67,41 +68,12 @@ void app_main(void)
     // start console
     console_api_start();
 
-/*
-    while (1)
-    {
-        // mm
-        desired_pos[0] = 90.0f;
-        desired_pos[1] = 101.0f;
-        desired_pos[2] = 574.0f;
-        // deg
-        desired_pos[3] = 45.0f;
-        desired_pos[4] = -68.0f;
-        desired_pos[5] = 49.0f;
-
-        ESP_LOGI(TAG, "moving to position 0");
-        robot_move_to_pos(desired_pos, rpm);
-        ESP_LOGI(TAG, "moved to position 0");
-
-        // mm
-        desired_pos[0] = 105.0f;
-        desired_pos[1] = 80.0f;
-        desired_pos[2] = 554.0f;
-        // deg
-        desired_pos[3] = 45.0f;
-        desired_pos[4] = -68.0f;
-        desired_pos[5] = 52.0f;
-
-        ESP_LOGI(TAG, "moving to position 1");
-        robot_move_to_pos(desired_pos, rpm);
-        ESP_LOGI(TAG, "moved to position 1");
-    }
-*/
-
     // go back to zero position before power off
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
-        single_DOF_move(i, 0.0f, 10.0f);
+        single_DOF_move(i, 0.0f, 3.0f);
     wait_for_motors_stop();
 
     motor_deinit();
+
+    ESP_LOGI(TAG, "safe to power off");
 }

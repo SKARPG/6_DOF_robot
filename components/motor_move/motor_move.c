@@ -226,6 +226,12 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
 
     if (DOF == 0 || DOF == 1 || DOF == 2)
     {
+        // prevent robot from moving into itself
+        while (position > 180.0f)
+            position -= 360.0f;
+        while (position < -180.0f)
+            position += 360.0f;
+
         float cur_motor_pos = 0.0f;
 
         portENTER_CRITICAL(&motor_spinlock);
@@ -337,6 +343,11 @@ void robot_move_to_pos(double* desired_pos, float rpm)
         joint_pos[i] = (double)motor_pos[i];
 
     calc_inv_kin(desired_pos, joint_pos);
+
+    // printf("joint pos:\n");
+    // for (uint8_t i = 0; i < MOTORS_NUM; i++)
+    //     printf("%f\t", joint_pos[i]);
+    // printf("\n");
 
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
         single_DOF_move(i, (float)joint_pos[i], rpm);
@@ -458,10 +469,23 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
                 break;
         }
 
+        ///////////////////////////////////
+        portENTER_CRITICAL(&motor_spinlock);
+        motor_pos_offset[i] = 0.0f;
+        portEXIT_CRITICAL(&motor_spinlock);
+        ///////////////////////////////////
+
+        // check if motor is at zero position
         if (fabs(get_motor_pos(i) + offset) < tresh)
         {
             portENTER_CRITICAL(&motor_spinlock);
             motor_pos_offset[i] = 0.0f;
+            portEXIT_CRITICAL(&motor_spinlock);
+        }
+        else
+        {
+            portENTER_CRITICAL(&motor_spinlock);
+            motor_pos_offset[i] = offset;
             portEXIT_CRITICAL(&motor_spinlock);
         }
     }

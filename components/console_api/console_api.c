@@ -197,8 +197,11 @@ static int cmd_robot_move_to_pos(int argc, char** argv)
     const double theta = robot_move_to_pos_args.theta->dval[0];
     const float rpm = robot_move_to_pos_args.rpm->dval[0];
 
+    printf("moving robot to position...\n");
     double desired_pos[6] = {x, y, z, phi, psi, theta};
     robot_move_to_pos(desired_pos, rpm);
+
+    printf("done!\n");
 
     return 0;
 }
