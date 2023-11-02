@@ -27,6 +27,28 @@ static const char nvs_offset_key[][NVS_DATA_KEY_SIZE] = {
 }; // array with nvs keys for positions offsets
 
 
+
+#ifdef STEP_MODE_ENABLE
+/**
+ * @brief calculate period in microseconds for desired motor in STEP mode
+ * 
+ * @param rpm desired speed in rpm
+ * @return period_us calculated period in microseconds
+ */
+static uint64_t calc_period_us(float rpm)
+{
+    uint64_t period_us = 0;
+
+    if (rpm > 0.0f)
+        period_us = (uint64_t)((60.0f * 1000000.0f) / (rpm * (float)FULL_ROT * GEAR_RATIO));
+    else
+        ESP_LOGW(TAG, "calc_period_us: invalid RPM!");
+
+    return period_us;
+}
+#endif // STEP_MODE_ENABLE
+
+
 /**
  * @brief calculate normalized speed for desired motor
  * 
@@ -226,6 +248,10 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
     uint32_t pulses = 0;
     uint16_t AX_pos = 0;
 
+#ifdef STEP_MODE_ENABLE
+    int64_t period_us = 0;
+#endif // STEP_MODE_ENABLE
+
     int16_t speed = 0;
 
     portENTER_CRITICAL(&motor_spinlock);
@@ -235,15 +261,25 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
     if (rpm > 0.0f)
     {
         speed = calc_speed(DOF, rpm);
+
+#ifdef STEP_MODE_ENABLE
+        period_us = calc_period_us(rpm);
+#endif // STEP_MODE_ENABLE
     }
     else if (rpm < 0.0f)
     {
         speed = calc_speed(DOF, -rpm);
+
+#ifdef STEP_MODE_ENABLE
+        period_us = calc_period_us(-rpm);
+#endif // STEP_MODE_ENABLE
+
         position = -position;
     }
 
     if (DOF == 0 || DOF == 1 || DOF == 2)
     {
+
         float cur_motor_pos = 0.0f;
 
         portENTER_CRITICAL(&motor_spinlock);
@@ -257,12 +293,24 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
         if (DOF == 0 || DOF == 2)
         {
             if (position < cur_motor_pos)
+            {
                 speed = -speed;
+
+#ifdef STEP_MODE_ENABLE
+                period_us = -period_us;
+#endif // STEP_MODE_ENABLE
+            }
         }
         else
         {
             if (position > cur_motor_pos)
+            {
                 speed = -speed;
+
+#ifdef STEP_MODE_ENABLE
+                period_us = -period_us;
+#endif // STEP_MODE_ENABLE
+            }
         }
     }
     else if (DOF == 3 || DOF == 4 || DOF == 5)
@@ -286,13 +334,26 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
     switch (DOF)
     {
         case 0:
+#ifndef STEP_MODE_ENABLE
             emm42_servo_uart_move(emm42_conf, 1, speed, EMM42_ACCEL, pulses);
+#else
+            printf("pulses: %lu; period: %lld\n", pulses, period_us);
+            emm42_servo_step_move(emm42_conf, 0, pulses, period_us);
+#endif // STEP_MODE_ENABLE
             break;
         case 1:
+#ifndef STEP_MODE_ENABLE
             mks_servo_uart_cr_set_pos(mks_conf, 2, speed, MKS_ACCEL, pulses);
+#else
+            mks_servo_step_move(mks_conf, 0, pulses, period_us);
+#endif // STEP_MODE_ENABLE
             break;
         case 2:
+#ifndef STEP_MODE_ENABLE
             emm42_servo_uart_move(emm42_conf, 3, speed, EMM42_ACCEL, pulses);
+#else
+            emm42_servo_step_move(emm42_conf, 1, pulses, period_us);
+#endif // STEP_MODE_ENABLE
             break;
         case 3:
             if (speed != 0)
@@ -314,7 +375,7 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
     vTaskDelay(UART_WAIT);
 
     // update goal position
-    if (speed != 0)
+    if (rpm != 0.0)
     {
         float update_pos = 0.0f;
 
@@ -461,7 +522,8 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
     // get all motors positions
     for (uint32_t i = 0; i < MOTORS_NUM; i++)
     {
-        float cur_pos = get_motor_pos(i);
+        // float cur_pos = get_motor_pos(i);
+        float cur_pos = 0.0f;
 
         portENTER_CRITICAL(&motor_spinlock);
         motor_pos[i] = cur_pos;

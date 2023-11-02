@@ -23,6 +23,7 @@
 #include "nvs_flash.h"
 
 #define MOTORS_NUM 6 // number of motors
+#define STEP_MODE_ENABLE 1 // uncomment to enable step mode
 
 #define EMM42_POS_TRESHOLD 0.05f // emm42 servo position treshold
 #define MKS_POS_TRESHOLD 0.05f // MKS servo position treshold
@@ -31,12 +32,15 @@
 #define FULL_ROT 200 // full rotation of motor in steps
 #define GEAR_RATIO 38.4f // gearbox ratio
 
-#define EMM42_MAX_RPM (2200.0f / GEAR_RATIO) // emm42 servo maximum RPM
-#define MKS_MAX_RPM (((1279.0f * 6000.0f) / (float)FULL_ROT) / GEAR_RATIO) // MKS servo maximum RPM
-#define AX_MAX_RPM 114.0f // AX servo maximum RPM
+#define EMM42_MIN_RPM (2.5f / GEAR_RATIO) // emm42 servo minimum RPM
+#define EMM42_MAX_RPM (2900.0f / GEAR_RATIO) // emm42 servo maximum RPM
+#define MKS_MIN_RPM (30.0f / GEAR_RATIO) // MKS servo minimum RPM
+#define MKS_MAX_RPM (24500.0f / GEAR_RATIO) // MKS servo maximum RPM
+#define AX_MIN_RPM 0.111f // AX servo minimum RPM
+#define AX_MAX_RPM 90.0f // AX servo maximum RPM
 
-#define EMM42_ACCEL 255 // emm42 servo acceleration
-#define MKS_ACCEL 0 // MKS servo acceleration
+#define EMM42_ACCEL 254 // emm42 servo acceleration
+#define MKS_ACCEL 1 // MKS servo acceleration
 
 #define UART_WAIT (10 / portTICK_PERIOD_MS) // UART wait time
 

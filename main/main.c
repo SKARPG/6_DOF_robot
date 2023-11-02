@@ -32,18 +32,34 @@ void app_main(void)
         .baudrate = UART_BAUD
     };
 
+    gpio_num_t emm42_step_pin[2] = {13, 14};
+    gpio_num_t emm42_dir_pin[2] = {26, 27};
+    gpio_num_t emm42_en_pin[2] = {25, 12};
+
     emm42_conf_t emm42_config = {
         .uart = UART_NUM,
         .baudrate = UART_BAUD,
         .tx_pin = TX_PIN,
-        .rx_pin = RX_PIN
+        .rx_pin = RX_PIN,
+        .motor_num = 2,
+        .step_pin = emm42_step_pin,
+        .dir_pin = emm42_dir_pin,
+        .en_pin = emm42_en_pin
     };
+
+    gpio_num_t mks_step_pin[1] = {0};
+    gpio_num_t mks_dir_pin[1] = {2};
+    gpio_num_t mks_en_pin[1] = {4};
 
     mks_conf_t mks_config = {
         .uart = UART_NUM,
         .baudrate = UART_BAUD,
         .tx_pin = TX_PIN,
-        .rx_pin = RX_PIN
+        .rx_pin = RX_PIN,
+        .motor_num = 1,
+        .step_pin = mks_step_pin,
+        .dir_pin = mks_dir_pin,
+        .en_pin = mks_en_pin
     };
 
     rpi_i2c_conf_t rpi_i2c_config = {
@@ -55,9 +71,6 @@ void app_main(void)
 
     motor_init(&AX_config, &emm42_config, &mks_config, &rpi_i2c_config);
 
-    // desired end effector position for inverse kinematics
-    double desired_pos[6] = {X_ZERO, Y_ZERO, Z_ZERO, PHI_ZERO, PSI_ZERO, THETA_ZERO};
-
     float rpm = 5.0f;
 
     // go to zero position
@@ -66,7 +79,7 @@ void app_main(void)
     wait_for_motors_stop();
 
     // start console
-    console_api_start();
+    // console_api_start();
 
     // save encoders position before power off
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
