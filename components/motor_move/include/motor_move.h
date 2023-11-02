@@ -26,7 +26,7 @@
 
 #define EMM42_POS_TRESHOLD 0.05f // emm42 servo position treshold
 #define MKS_POS_TRESHOLD 0.05f // MKS servo position treshold
-#define AX_POS_TRESHOLD 1.5f // AX servo position treshold
+#define AX_POS_TRESHOLD 5.0f // AX servo position treshold
 
 #define FULL_ROT 200 // full rotation of motor in steps
 #define GEAR_RATIO 38.4f // gearbox ratio

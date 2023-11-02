@@ -18,6 +18,7 @@ static AX_conf_t AX_conf; // struct with AX servo parameters
 static emm42_conf_t emm42_conf; // struct with emm42 servo parameters
 static mks_conf_t mks_conf; // struct with mks servo parameters
 static float motor_pos[MOTORS_NUM]; // array with current positions for each motor in degrees
+static float motor_speed[MOTORS_NUM]; // array with last speeds of each motor in rpm
 static float motor_pos_offset[MOTORS_NUM]; // array with saved motor position offsets in degrees
 
 static nvs_handle_t zero_pos_handle; // handle for nvs storage
@@ -182,6 +183,19 @@ void wait_for_motors_stop()
                 break;
             }
         }
+
+        // resend move command to AX servos
+        if (MOTORS_NUM > 3)
+        {
+            for (uint8_t i = 3; i < MOTORS_NUM; i++)
+            {
+                portENTER_CRITICAL(&motor_spinlock);
+                float speed = motor_speed[i];
+                portEXIT_CRITICAL(&motor_spinlock);
+
+                single_DOF_move(i, motor_pos[i], speed);
+            }
+        }
     }
 
     // prevent position error accumulation
@@ -214,6 +228,10 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
 
     int16_t speed = 0;
 
+    portENTER_CRITICAL(&motor_spinlock);
+    motor_speed[DOF] = rpm;
+    portEXIT_CRITICAL(&motor_spinlock);
+
     if (rpm > 0.0f)
     {
         speed = calc_speed(DOF, rpm);
@@ -226,12 +244,6 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
 
     if (DOF == 0 || DOF == 1 || DOF == 2)
     {
-        // prevent robot from moving into itself
-        while (position > 180.0f)
-            position -= 360.0f;
-        while (position < -180.0f)
-            position += 360.0f;
-
         float cur_motor_pos = 0.0f;
 
         portENTER_CRITICAL(&motor_spinlock);
@@ -400,6 +412,13 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
         }
     }
 
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+    {
+        portENTER_CRITICAL(&motor_spinlock);
+        motor_speed[i] = 0.0f;
+        portEXIT_CRITICAL(&motor_spinlock);
+    }
+
     // initialize NVS
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND)
@@ -505,7 +524,7 @@ void motor_set_zero_pos(uint8_t DOF)
 
 
 /**
- * @brief save encoder position to nvs
+ * @brief save encoder position to nvs before power off
  * 
  * @param DOF motor address
  */
@@ -515,9 +534,21 @@ void motor_save_enc_states(uint8_t DOF)
     float offset = motor_pos_offset[DOF];
     portEXIT_CRITICAL(&motor_spinlock);
 
-    // get_motor_pos(DOF) = pos - offset
-    float enc = get_motor_pos(DOF) + offset;
-    offset -= enc;
+    if (DOF == 0 || DOF == 1 || DOF == 2)
+    {
+        // get_motor_pos(DOF) = pos - offset
+        float enc = get_motor_pos(DOF) + offset;
+        offset -= enc;
+
+        // mks servo encoder does not zero itself after reset
+        if (DOF == 1)
+        {
+            while (offset > 180.0f)
+                offset -= 360.0f;
+            while (offset < -180.0f)
+                offset += 360.0f;
+        }
+    }
 
     portENTER_CRITICAL(&motor_spinlock);
     motor_pos_offset[DOF] = offset;
