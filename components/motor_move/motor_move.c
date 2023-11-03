@@ -190,7 +190,7 @@ void wait_for_motors_stop()
             else
                 motor_stop[i] = false;
 
-            // printf("%lu\t%f\n", i, get_motor_pos(AX_conf, emm42_conf, mks_conf, i) - motor_goal); // for debug
+            // printf("%lu\t%f\n", i, get_motor_pos(i) - motor_goal); // for debug
         }
 
         // printf("\n"); // for debug
@@ -245,35 +245,24 @@ void wait_for_motors_stop()
  */
 void single_DOF_move(uint8_t DOF, float position, float rpm)
 {
-    uint32_t pulses = 0;
-    uint16_t AX_pos = 0;
-
-#ifdef STEP_MODE_ENABLE
-    int64_t period_us = 0;
-#endif // STEP_MODE_ENABLE
-
-    int16_t speed = 0;
-
     portENTER_CRITICAL(&motor_spinlock);
     motor_speed[DOF] = rpm;
     portEXIT_CRITICAL(&motor_spinlock);
 
+    uint32_t pulses = 0;
+    uint16_t AX_pos = 0;
+
+    int16_t speed = 0;
+
+#ifndef STEP_MODE_ENABLE
+
     if (rpm > 0.0f)
     {
         speed = calc_speed(DOF, rpm);
-
-#ifdef STEP_MODE_ENABLE
-        period_us = calc_period_us(rpm);
-#endif // STEP_MODE_ENABLE
     }
     else if (rpm < 0.0f)
     {
         speed = calc_speed(DOF, -rpm);
-
-#ifdef STEP_MODE_ENABLE
-        period_us = calc_period_us(-rpm);
-#endif // STEP_MODE_ENABLE
-
         position = -position;
     }
 
@@ -293,24 +282,12 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
         if (DOF == 0 || DOF == 2)
         {
             if (position < cur_motor_pos)
-            {
                 speed = -speed;
-
-#ifdef STEP_MODE_ENABLE
-                period_us = -period_us;
-#endif // STEP_MODE_ENABLE
-            }
         }
         else
         {
             if (position > cur_motor_pos)
-            {
                 speed = -speed;
-
-#ifdef STEP_MODE_ENABLE
-                period_us = -period_us;
-#endif // STEP_MODE_ENABLE
-            }
         }
     }
     else if (DOF == 3 || DOF == 4 || DOF == 5)
@@ -334,26 +311,13 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
     switch (DOF)
     {
         case 0:
-#ifndef STEP_MODE_ENABLE
             emm42_servo_uart_move(emm42_conf, 1, speed, EMM42_ACCEL, pulses);
-#else
-            printf("pulses: %lu; period: %lld\n", pulses, period_us);
-            emm42_servo_step_move(emm42_conf, 0, pulses, period_us);
-#endif // STEP_MODE_ENABLE
             break;
         case 1:
-#ifndef STEP_MODE_ENABLE
             mks_servo_uart_cr_set_pos(mks_conf, 2, speed, MKS_ACCEL, pulses);
-#else
-            mks_servo_step_move(mks_conf, 0, pulses, period_us);
-#endif // STEP_MODE_ENABLE
             break;
         case 2:
-#ifndef STEP_MODE_ENABLE
             emm42_servo_uart_move(emm42_conf, 3, speed, EMM42_ACCEL, pulses);
-#else
-            emm42_servo_step_move(emm42_conf, 1, pulses, period_us);
-#endif // STEP_MODE_ENABLE
             break;
         case 3:
             if (speed != 0)
@@ -372,19 +336,111 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
             break;
     }
 
+#else
+
+    int64_t period_us = 0;
+
+    if (DOF == 0 || DOF == 1 || DOF == 2)
+    {
+        if (rpm > 0.0f)
+            period_us = calc_period_us(rpm);
+        else
+        {
+            period_us = calc_period_us(-rpm);
+            position = -position;
+        }
+
+        float cur_motor_pos = 0.0f;
+
+        portENTER_CRITICAL(&motor_spinlock);
+        cur_motor_pos = motor_pos[DOF];
+        portEXIT_CRITICAL(&motor_spinlock);
+
+        // convert position in degrees to pulses
+        pulses = (uint32_t)(fabs(position - cur_motor_pos) / 360.0f * (float)FULL_ROT * GEAR_RATIO);
+
+        if (position < cur_motor_pos)
+            period_us = -period_us;
+    }
+    else if (DOF == 3 || DOF == 4 || DOF == 5)
+    {
+        if (rpm > 0.0f)
+        {
+            speed = calc_speed(DOF, rpm);
+        }
+        else if (rpm < 0.0f)
+        {
+            speed = calc_speed(DOF, -rpm);
+            position = -position;
+        }
+
+        // convert position in degrees to AX servo position
+        AX_pos = (uint16_t)((position + 150.0f) / 300.0f * 1023.0f);
+
+        if (AX_pos > 1023)
+        {
+            ESP_LOGW(TAG, "AX servo: too high position!");
+            AX_pos = 1023;
+        }
+
+        if (speed > 1023)
+        {
+            ESP_LOGW(TAG, "AX servo: too high speed!");
+            speed = 1023;
+        }
+    }
+
+    switch (DOF)
+    {
+        case 0:
+            if (period_us != 0)
+                emm42_servo_step_move(emm42_conf, 0, pulses, period_us);
+            break;
+        case 1:
+            if (period_us != 0)
+                mks_servo_step_move(mks_conf, 0, pulses, period_us);
+            break;
+        case 2:
+            if (period_us != 0)
+                emm42_servo_step_move(emm42_conf, 1, pulses, period_us);
+            break;
+        case 3:
+            if (speed != 0)
+                AX_servo_set_pos_w_spd(AX_conf, 4, AX_pos, speed);
+            break;
+        case 4:
+            if (speed != 0)
+                AX_servo_set_pos_w_spd(AX_conf, 5, AX_pos, speed);
+            break;
+        case 5:
+            if (speed != 0)
+                AX_servo_set_pos_w_spd(AX_conf, 6, AX_pos, speed);
+            break;
+        default:
+            ESP_LOGW(TAG, "invalid DOF!");
+            break;
+    }
+
+#endif // STEP_MODE_ENABLE
+
     vTaskDelay(UART_WAIT);
 
     // update goal position
-    if (rpm != 0.0)
+    if (rpm != 0)
     {
         float update_pos = 0.0f;
 
         if (DOF == 0 || DOF == 1 || DOF == 2)
         {
+
+#ifndef STEP_MODE_ENABLE
             update_pos = (float)(speed/abs(speed)) * (float)pulses / (float)FULL_ROT * 360.0f / GEAR_RATIO;
 
             if (DOF == 0 || DOF == 2) // CCW orientation
                 update_pos = -update_pos;
+#else
+            update_pos = -(float)(period_us/llabs(period_us)) * (float)pulses / (float)FULL_ROT * 360.0f / GEAR_RATIO;
+#endif // STEP_MODE_ENABLE
 
             portENTER_CRITICAL(&motor_spinlock);
             motor_pos[DOF] -= update_pos;
@@ -519,11 +575,12 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
         }
     }
 
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+
     // get all motors positions
     for (uint32_t i = 0; i < MOTORS_NUM; i++)
     {
-        // float cur_pos = get_motor_pos(i);
-        float cur_pos = 0.0f;
+        float cur_pos = get_motor_pos(i);
 
         portENTER_CRITICAL(&motor_spinlock);
         motor_pos[i] = cur_pos;

@@ -32,9 +32,9 @@ void app_main(void)
         .baudrate = UART_BAUD
     };
 
-    gpio_num_t emm42_step_pin[2] = {13, 14};
-    gpio_num_t emm42_dir_pin[2] = {26, 27};
-    gpio_num_t emm42_en_pin[2] = {25, 12};
+    gpio_num_t emm42_step_pin[] = {25, 26};
+    gpio_num_t emm42_dir_pin[] = {27, 5};
+    gpio_num_t emm42_en_pin[] = {0, 2};
 
     emm42_conf_t emm42_config = {
         .uart = UART_NUM,
@@ -47,9 +47,9 @@ void app_main(void)
         .en_pin = emm42_en_pin
     };
 
-    gpio_num_t mks_step_pin[1] = {0};
-    gpio_num_t mks_dir_pin[1] = {2};
-    gpio_num_t mks_en_pin[1] = {4};
+    gpio_num_t mks_step_pin[] = {18};
+    gpio_num_t mks_dir_pin[] = {23};
+    gpio_num_t mks_en_pin[] = {4};
 
     mks_conf_t mks_config = {
         .uart = UART_NUM,
@@ -71,7 +71,7 @@ void app_main(void)
 
     motor_init(&AX_config, &emm42_config, &mks_config, &rpi_i2c_config);
 
-    float rpm = 5.0f;
+    float rpm = 2.0f;
 
     // go to zero position
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
@@ -79,7 +79,7 @@ void app_main(void)
     wait_for_motors_stop();
 
     // start console
-    // console_api_start();
+    console_api_start();
 
     // save encoders position before power off
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
