@@ -28,6 +28,46 @@ static const char nvs_offset_key[][NVS_DATA_KEY_SIZE] = {
 
 
 
+/**
+ * @brief calculate speeds for each motor for linear interpolation
+ * 
+ * @param max_speed maximal desired speed in rpm
+ * @param joint_pos array with goal positions in degrees
+ * @param ax_rpm array with calculated speeds in rpm
+ */
+static void axes_interpolation(float max_speed, double* joint_pos, float* ax_rpm)
+{
+    uint8_t max_i = 0;
+    float max_s = 0.0f;
+
+    // find the longest path
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+    {
+        float cur_pos = get_motor_pos(i);
+
+        if (fabs(joint_pos[i] - cur_pos) > max_s)
+        {
+            max_i = i;
+            max_s = fabs(joint_pos[i] - cur_pos);
+        }
+    }
+
+    ax_rpm[max_i] = max_speed;
+
+    // v=s/t => t=s/v
+    float t = max_s / max_speed;
+
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+    {
+        if (i != max_i)
+        {
+            float cur_pos = get_motor_pos(i);
+            ax_rpm[i] = fabs(joint_pos[i] - cur_pos) / t;
+        }
+    }
+}
+
+
 #ifdef STEP_MODE_ENABLE
 /**
  * @brief calculate period in microseconds for desired motor in STEP mode
@@ -268,12 +308,7 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
 
     if (DOF == 0 || DOF == 1 || DOF == 2)
     {
-
-        float cur_motor_pos = 0.0f;
-
-        portENTER_CRITICAL(&motor_spinlock);
-        cur_motor_pos = motor_pos[DOF];
-        portEXIT_CRITICAL(&motor_spinlock);
+        float cur_motor_pos = get_motor_pos(DOF);
 
         // convert position in degrees to pulses
         pulses = (uint32_t)(fabs(position - cur_motor_pos) / 360.0f * (float)FULL_ROT * GEAR_RATIO);
@@ -350,11 +385,7 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
             position = -position;
         }
 
-        float cur_motor_pos = 0.0f;
-
-        portENTER_CRITICAL(&motor_spinlock);
-        cur_motor_pos = motor_pos[DOF];
-        portEXIT_CRITICAL(&motor_spinlock);
+        float cur_motor_pos = get_motor_pos(DOF);
 
         // convert position in degrees to pulses
         pulses = (uint32_t)(fabs(position - cur_motor_pos) / 360.0f * (float)FULL_ROT * GEAR_RATIO);
@@ -432,7 +463,6 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
 
         if (DOF == 0 || DOF == 1 || DOF == 2)
         {
-
 #ifndef STEP_MODE_ENABLE
             update_pos = (float)(speed/abs(speed)) * (float)pulses / (float)FULL_ROT * 360.0f / GEAR_RATIO;
 
@@ -467,19 +497,42 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
 void robot_move_to_pos(double* desired_pos, float rpm)
 {
     double joint_pos[MOTORS_NUM];
+    float ax_rpm[MOTORS_NUM];
 
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
+    {
         joint_pos[i] = (double)motor_pos[i];
+        ax_rpm[i] = rpm;
+    }
 
+    // calculate inverse kinematics
     calc_inv_kin(desired_pos, joint_pos);
 
+    // constraint joint positions
+    if (joint_pos[1] > 90.0f)
+        joint_pos[1] = 90.0f;
+    else if (joint_pos[1] < -90.0f)
+        joint_pos[1] = -90.0f;
+    
+    if (joint_pos[2] > 135.0f)
+        joint_pos[2] = 135.0f;
+    else if (joint_pos[2] < -135.0f)
+        joint_pos[2] = -135.0f;
+
+    if (joint_pos[0] > 90.0f || joint_pos[0] < -90.0f || joint_pos[2] > 135.0f || joint_pos[2] < -135.0f)
+        ESP_LOGW(TAG, "out of constraints alert!");
+
+    // calculate speeds for each motor (axes interpolation)
+    axes_interpolation(rpm, joint_pos, ax_rpm);
+
+    // // for debug
     // printf("joint pos:\n");
     // for (uint8_t i = 0; i < MOTORS_NUM; i++)
     //     printf("%f\t", joint_pos[i]);
     // printf("\n");
 
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
-        single_DOF_move(i, (float)joint_pos[i], rpm);
+        single_DOF_move(i, (float)joint_pos[i], ax_rpm[i]);
     wait_for_motors_stop();
 }
 

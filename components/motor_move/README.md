@@ -2,6 +2,7 @@
 
 ## Notes
 * Declare how many motors you want to use by changing `MOTORS_NUM` in `motor_move.h`.
+* Uncomment `#define STEP_MODE_ENABLE 1` in `motor_move.h` to enable step mode.
 * Define position error tresholds in `motor_move.h`:
     * EMM42_POS_TRESHOLD - emm42 servo position treshold,
     * MKS_POS_TRESHOLD - MKS servo position treshold,
