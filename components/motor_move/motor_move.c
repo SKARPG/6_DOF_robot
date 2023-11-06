@@ -525,15 +525,15 @@ void robot_move_to_pos(double* desired_pos, float rpm)
     // calculate speeds for each motor (axes interpolation)
     axes_interpolation(rpm, joint_pos, ax_rpm);
 
-    // // for debug
-    // printf("joint pos:\n");
-    // for (uint8_t i = 0; i < MOTORS_NUM; i++)
-    //     printf("%f\t", joint_pos[i]);
-    // printf("\n");
-
+    // for debug
+    printf("joint pos:\n");
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
-        single_DOF_move(i, (float)joint_pos[i], ax_rpm[i]);
-    wait_for_motors_stop();
+        printf("%f\t", joint_pos[i]);
+    printf("\n");
+
+    // for (uint8_t i = 0; i < MOTORS_NUM; i++)
+    //     single_DOF_move(i, (float)joint_pos[i], ax_rpm[i]);
+    // wait_for_motors_stop();
 }
 
 
