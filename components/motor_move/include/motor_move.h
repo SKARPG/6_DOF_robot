@@ -27,8 +27,8 @@
 #define MOTORS_NUM 6 // number of motors
 
 #define EMM42_POS_TRESHOLD 0.05f // emm42 servo position treshold
-#define MKS_POS_TRESHOLD 0.05f // MKS servo position treshold
-#define AX_POS_TRESHOLD 5.0f // AX servo position treshold
+#define MKS_POS_TRESHOLD 0.5f // MKS servo position treshold
+#define AX_POS_TRESHOLD 1.0f // AX servo position treshold
 
 #define FULL_ROT 200 // full rotation of motor in steps
 #define GEAR_RATIO 38.4f // gearbox ratio
@@ -38,7 +38,7 @@
 #define MKS_MIN_RPM (30.0f / GEAR_RATIO) // MKS servo minimum RPM
 #define MKS_MAX_RPM (24500.0f / GEAR_RATIO) // MKS servo maximum RPM
 #define AX_MIN_RPM 0.111f // AX servo minimum RPM
-#define AX_MAX_RPM 105.0f // AX servo maximum RPM
+#define AX_MAX_RPM 104.0f // AX servo maximum RPM
 
 #define EMM42_ACCEL 254 // emm42 servo acceleration
 #define MKS_ACCEL 1 // MKS servo acceleration

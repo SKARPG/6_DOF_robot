@@ -69,28 +69,23 @@ void app_main(void)
         .isr_pin = RPI_INTR_PIN
     };
 
-    emm42_servo_init(emm42_config);
+    motor_init(&AX_config, &emm42_config, &mks_config, &rpi_i2c_config);
 
-    emm42_servo_step_move(emm42_config, 1, FULL_ROT * GEAR_RATIO, 250);
-    vTaskDelay(30000 / portTICK_PERIOD_MS);
+    float rpm = 2.0f;
 
-    // motor_init(&AX_config, &emm42_config, &mks_config, &rpi_i2c_config);
+    // go to zero position
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        single_DOF_move(i, 0.0f, rpm);
+    wait_for_motors_stop();
 
-    // float rpm = 2.0f;
+    // start console
+    console_api_start();
 
-    // // go to zero position
-    // for (uint8_t i = 0; i < MOTORS_NUM; i++)
-    //     single_DOF_move(i, 0.0f, rpm);
-    // wait_for_motors_stop();
+    // save encoders position before power off
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        motor_save_enc_states(i);
 
-    // // start console
-    // console_api_start();
+    motor_deinit();
 
-    // // save encoders position before power off
-    // for (uint8_t i = 0; i < MOTORS_NUM; i++)
-    //     motor_save_enc_states(i);
-
-    // motor_deinit();
-
-    // ESP_LOGI(TAG, "safe to power off");
+    ESP_LOGI(TAG, "safe to power off");
 }

@@ -122,6 +122,11 @@ static int16_t calc_speed(uint8_t DOF, float rpm)
         }
         else if (DOF == 3 || DOF == 4 || DOF == 5)
         {
+#ifdef STEP_MODE_ENABLE
+            if (EMM42_ACCEL_PER == MKS_ACCEL_PER)
+                rpm = rpm / (1.0f + EMM42_ACCEL_PER);
+#endif // STEP_MODE_ENABLE
+
             speed = (int16_t)(rpm / AX_MAX_RPM * 1023.0f);
             if (speed > 1023)
             {
@@ -424,15 +429,15 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
     switch (DOF)
     {
         case 0:
-            if (period_us != 0)
+            if (period_us != 0 && pulses != 0)
                 emm42_servo_step_move(emm42_conf, 0, pulses, period_us);
             break;
         case 1:
-            if (period_us != 0)
+            if (period_us != 0 && pulses != 0)
                 mks_servo_step_move(mks_conf, 0, pulses, period_us);
             break;
         case 2:
-            if (period_us != 0)
+            if (period_us != 0 && pulses != 0)
                 emm42_servo_step_move(emm42_conf, 1, pulses, period_us);
             break;
         case 3:
