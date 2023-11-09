@@ -124,7 +124,7 @@ static int16_t calc_speed(uint8_t DOF, float rpm)
         {
 #ifdef STEP_MODE_ENABLE
             if (EMM42_ACCEL_PER == MKS_ACCEL_PER)
-                rpm = rpm / (1.0f + EMM42_ACCEL_PER);
+                rpm = rpm / (1.0f + 2.0f * EMM42_ACCEL_PER);
 #endif // STEP_MODE_ENABLE
 
             speed = (int16_t)(rpm / AX_MAX_RPM * 1023.0f);
