@@ -21,7 +21,7 @@ It is necessary to change partition table to custom one (`partitions.csv`) and s
 ![Flash size settings](README_images/image-1.png)
 
 ## RPi program
-RPi works as an inverse kinematic solver. It receives data via I2C protocol from ESP32 and calculates angles for each servo. Then it sends calculated angles back to ESP32.
+Raspberry Pi works as an inverse kinematic solver. It receives data via I2C protocol from ESP32 and calculates angles for each servo. Then it sends calculated angles back to ESP32.
 
 In order to get RPi inverse kinematics solver program follow these commands in `Bash` terminal:
 
@@ -34,7 +34,15 @@ cmake --build .
 ./inv_kin_solv
 ```
 
-Then setup this program as a startup program following these instructions:
+To start the program connect ESP32 via USB to RPi and open `Bash` terminal and follow these commands:
+```bash
+cd ~/Desktop/inv_kin_solv
+bash start_inv_kin.sh
+```
+
+Above commands will open Putty terminal and start inverse kinematics solver. You will be able to steer a robot via ESP console.
+
+You can also set up this program as a startup program following these instructions:
 https://learn.sparkfun.com/tutorials/how-to-run-a-raspberry-pi-program-on-startup#method-3-systemd
 
 ## Motor homing
