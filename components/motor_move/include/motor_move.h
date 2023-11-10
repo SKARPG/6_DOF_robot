@@ -38,7 +38,7 @@
 #define MKS_MIN_RPM (30.0f / GEAR_RATIO) // MKS servo minimum RPM
 #define MKS_MAX_RPM (24500.0f / GEAR_RATIO) // MKS servo maximum RPM
 #define AX_MIN_RPM 0.111f // AX servo minimum RPM
-#define AX_MAX_RPM 104.0f // AX servo maximum RPM
+#define AX_MAX_RPM 102.0f // AX servo maximum RPM
 
 #define EMM42_ACCEL 254 // emm42 servo acceleration
 #define MKS_ACCEL 1 // MKS servo acceleration

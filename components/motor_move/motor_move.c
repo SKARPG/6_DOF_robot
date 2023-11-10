@@ -524,7 +524,7 @@ void robot_move_to_pos(double* desired_pos, float rpm)
     else if (joint_pos[2] < -135.0f)
         joint_pos[2] = -135.0f;
 
-    if (joint_pos[0] > 90.0f || joint_pos[0] < -90.0f || joint_pos[2] > 135.0f || joint_pos[2] < -135.0f)
+    if (joint_pos[1] > 90.0f || joint_pos[1] < -90.0f || joint_pos[2] > 135.0f || joint_pos[2] < -135.0f)
         ESP_LOGW(TAG, "out of constraints alert!");
 
     // calculate speeds for each motor (axes interpolation)
@@ -536,9 +536,9 @@ void robot_move_to_pos(double* desired_pos, float rpm)
         printf("%f\t", joint_pos[i]);
     printf("\n");
 
-    // for (uint8_t i = 0; i < MOTORS_NUM; i++)
-    //     single_DOF_move(i, (float)joint_pos[i], ax_rpm[i]);
-    // wait_for_motors_stop();
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        single_DOF_move(i, (float)joint_pos[i], ax_rpm[i]);
+    wait_for_motors_stop();
 }
 
 
@@ -583,6 +583,12 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
             vTaskDelay(UART_WAIT);
 
             AX_servo_set_max_torque(AX_conf, i, 1022);
+            vTaskDelay(UART_WAIT);
+
+            AX_servo_set_C_margin(AX_conf, i, 0, 0);
+            vTaskDelay(UART_WAIT);
+
+            AX_servo_set_C_slope(AX_conf, i, 2, 2);
             vTaskDelay(UART_WAIT);
         }
     }
