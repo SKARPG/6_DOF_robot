@@ -26,6 +26,11 @@ Raspberry Pi works as an inverse kinematic solver. It receives data via I2C prot
 In order to get RPi inverse kinematics solver program follow these commands in `Bash` terminal:
 
 ```bash
+sudo apt update
+sudo apt upgrade
+sudo apt install putty
+sudo apt install xterm
+
 cd ~/Desktop
 git clone https://github.com/JanG175/inv_kin_solv.git
 mkdir build
@@ -40,7 +45,7 @@ cd ~/Desktop/inv_kin_solv
 bash start_inv_kin.sh
 ```
 
-Above commands will open Putty terminal and start inverse kinematics solver. You will be able to steer a robot via ESP console.
+Above commands will open Putty terminal and start inverse kinematics solver. You will be able to steer the robot via ESP console.
 
 You can also set up this program as a startup program following these instructions:
 https://learn.sparkfun.com/tutorials/how-to-run-a-raspberry-pi-program-on-startup#method-3-systemd
