@@ -12,6 +12,9 @@
 static const char* TAG = "console_demo";
 
 
+// ====================================================================================================
+
+
 // struct for servo_move command arguments
 static struct {
     struct arg_int* DOF;
@@ -90,6 +93,9 @@ static void register_servo_move()
 }
 
 
+// ====================================================================================================
+
+
 // struct for servo_get_pos command arguments
 static struct {
     struct arg_int* DOF;
@@ -153,6 +159,9 @@ static void register_servo_get_pos()
 }
 
 
+// ====================================================================================================
+
+
 // struct for robot_move_to_pos command arguments
 static struct {
     struct arg_dbl* x;
@@ -162,6 +171,7 @@ static struct {
     struct arg_dbl* psi;
     struct arg_dbl* theta;
     struct arg_dbl* rpm;
+    struct arg_int* interpolation;
     struct arg_end* end;
 } robot_move_to_pos_args;
 
@@ -189,6 +199,7 @@ static int cmd_robot_move_to_pos(int argc, char** argv)
     assert(robot_move_to_pos_args.psi->count == 1);
     assert(robot_move_to_pos_args.theta->count == 1);
     assert(robot_move_to_pos_args.rpm->count == 1);
+    assert(robot_move_to_pos_args.interpolation->count == 1);
     const double x = robot_move_to_pos_args.x->dval[0];
     const double y = robot_move_to_pos_args.y->dval[0];
     const double z = robot_move_to_pos_args.z->dval[0];
@@ -196,10 +207,25 @@ static int cmd_robot_move_to_pos(int argc, char** argv)
     const double psi = robot_move_to_pos_args.psi->dval[0];
     const double theta = robot_move_to_pos_args.theta->dval[0];
     const float rpm = robot_move_to_pos_args.rpm->dval[0];
+    const uint8_t interpolation = robot_move_to_pos_args.interpolation->ival[0];
+
+    uint8_t inter = 0;
+
+    if (interpolation == 'n')
+        inter = 0;
+    else if (interpolation == 'a')
+        inter = 1;
+    else if (interpolation == 'l')
+        inter = 2;
+    else
+    {
+        ESP_LOGW(TAG, "wrong interpolation type!");
+        return 1;
+    }
 
     printf("moving robot to position...\n");
     double desired_pos[6] = {x, y, z, phi, psi, theta};
-    robot_move_to_pos(desired_pos, rpm);
+    robot_move_to_pos(desired_pos, rpm, inter);
 
     printf("done!\n");
 
@@ -220,11 +246,12 @@ static void register_robot_move_to_pos()
     robot_move_to_pos_args.psi = arg_dbl1(NULL, NULL, "<psi>", "psi position in deg (double)");
     robot_move_to_pos_args.theta = arg_dbl1(NULL, NULL, "<theta>", "theta position in deg (double)");
     robot_move_to_pos_args.rpm = arg_dbl1(NULL, NULL, "<rpm>", "speed in RPM (float)");
-    robot_move_to_pos_args.end = arg_end(10);
+    robot_move_to_pos_args.interpolation = arg_int1(NULL, NULL, "<inter>", "interpolation type (n|a|l)");
+    robot_move_to_pos_args.end = arg_end(12);
 
     const esp_console_cmd_t cmd = {
         .command = "robot_move_to_pos",
-        .help = "Move robot end effector to a desired position with desired speed in RPM",
+        .help = "Move robot end effector to a given position with given a speed in RPM with given interpolation",
         .hint = NULL,
         .func = &cmd_robot_move_to_pos,
         .argtable = &robot_move_to_pos_args
@@ -232,6 +259,9 @@ static void register_robot_move_to_pos()
 
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
 }
+
+
+// ====================================================================================================
 
 
 // struct for servo_set_zero_pos command arguments
@@ -295,6 +325,133 @@ static void register_servo_set_zero_pos()
 
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
 }
+
+
+// ====================================================================================================
+
+
+// struct for robot_go_to_zero_pos command arguments
+static struct {
+    struct arg_dbl* rpm;
+    struct arg_end* end;
+} robot_go_to_zero_pos_args;
+
+
+/**
+ * @brief command for moving robot to its zero position
+ * 
+ * @param argc number of arguments
+ * @param argv array of arguments
+ * @return 0 - success, 1 - error
+ */
+static int cmd_robot_go_to_zero_pos(int argc, char** argv)
+{
+    int nerrors = arg_parse(argc, argv, (void**)&robot_go_to_zero_pos_args);
+    if (nerrors != 0)
+    {
+        arg_print_errors(stderr, robot_go_to_zero_pos_args.end, argv[0]);
+        return 1;
+    }
+
+    assert(robot_go_to_zero_pos_args.rpm->count == 1);
+    const float rpm = robot_go_to_zero_pos_args.rpm->dval[0];
+
+    printf("robot going to its zero position with speed %f ...\n", rpm);
+
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        single_DOF_move(i, 0.0f, rpm);
+    wait_for_motors_stop();
+
+    printf("done!\n");
+
+    return 0;
+}
+
+
+/**
+ * @brief register robot_go_to_zero_pos command
+ * 
+ */
+static void register_robot_go_to_zero_pos()
+{
+    robot_go_to_zero_pos_args.rpm = arg_dbl1(NULL, NULL, "<rpm>", "speed in RPM (float)");
+    robot_go_to_zero_pos_args.end = arg_end(2);
+
+    const esp_console_cmd_t cmd = {
+        .command = "robot_go_to_zero_pos",
+        .help = "Move robot to zero position with a given speed in RPM with axes interpolation",
+        .hint = NULL,
+        .func = &cmd_robot_go_to_zero_pos,
+        .argtable = &robot_go_to_zero_pos_args
+    };
+
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+}
+
+
+// ====================================================================================================
+
+
+// struct for robot_get_pos command arguments
+static struct {
+    struct arg_end* end;
+} robot_get_pos_args;
+
+
+/**
+ * @brief command for getting robot position
+ * 
+ * @param argc number of arguments
+ * @param argv array of arguments
+ * @return 0 - success, 1 - error
+ */
+static int cmd_robot_get_pos(int argc, char** argv)
+{
+    int nerrors = arg_parse(argc, argv, (void**)&robot_get_pos_args);
+    if (nerrors != 0)
+    {
+        arg_print_errors(stderr, robot_get_pos_args.end, argv[0]);
+        return 1;
+    }
+
+    double cur_pos[6];
+    double joint_pos[6];
+
+    for (uint8_t i = 0; i < 6; i++)
+        joint_pos[i] = get_motor_pos(i);
+
+    calc_forward_kinematics(cur_pos, joint_pos);
+
+    for (uint8_t i = 0; i < 3; i++)
+        printf("position %u: %f mm\n", i + 1, cur_pos[i]);
+
+    for (uint8_t i = 3; i < 6; i++)
+        printf("position %u: %f deg\n", i + 1, cur_pos[i]);
+
+    return 0;
+}
+
+
+/**
+ * @brief register robot_get_pos command
+ * 
+ */
+static void register_robot_get_pos()
+{
+    robot_get_pos_args.end = arg_end(1);
+
+    const esp_console_cmd_t cmd = {
+        .command = "robot_get_pos",
+        .help = "Get robot end effector position",
+        .hint = NULL,
+        .func = &cmd_robot_get_pos,
+        .argtable = &robot_get_pos_args
+    };
+
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+}
+
+// ====================================================================================================
 
 
 /**
@@ -370,7 +527,7 @@ static void init_console()
 
     // initialize console
     esp_console_config_t console_config = {
-        .max_cmdline_args = 12,
+        .max_cmdline_args = 14,
         .max_cmdline_length = 1024,
         .hint_color = atoi(LOG_COLOR_CYAN)
     };
@@ -418,6 +575,8 @@ void console_api_start()
     register_servo_get_pos();
     register_robot_move_to_pos();
     register_servo_set_zero_pos();
+    register_robot_go_to_zero_pos();
+    register_robot_get_pos();
 
     // prompt to be printed before each line (this can be customized, made dynamic, etc.)
     const char* prompt = LOG_COLOR_I PROMPT_STR "> " LOG_RESET_COLOR;
