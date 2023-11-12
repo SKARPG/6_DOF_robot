@@ -171,7 +171,7 @@ static struct {
     struct arg_dbl* psi;
     struct arg_dbl* theta;
     struct arg_dbl* rpm;
-    struct arg_int* interpolation;
+    struct arg_str* interpolation;
     struct arg_end* end;
 } robot_move_to_pos_args;
 
@@ -207,15 +207,21 @@ static int cmd_robot_move_to_pos(int argc, char** argv)
     const double psi = robot_move_to_pos_args.psi->dval[0];
     const double theta = robot_move_to_pos_args.theta->dval[0];
     const float rpm = robot_move_to_pos_args.rpm->dval[0];
-    const uint8_t interpolation = robot_move_to_pos_args.interpolation->ival[0];
+    const char* interpolation = robot_move_to_pos_args.interpolation->sval[0];
+
+    if (interpolation[1] != '\0')
+    {
+        ESP_LOGW(TAG, "wrong interpolation type!");
+        return 1;
+    }
 
     uint8_t inter = 0;
 
-    if (interpolation == 'n')
+    if (interpolation[0] == 'n')
         inter = 0;
-    else if (interpolation == 'a')
+    else if (interpolation[0] == 'a')
         inter = 1;
-    else if (interpolation == 'l')
+    else if (interpolation[0] == 'l')
         inter = 2;
     else
     {
@@ -246,7 +252,7 @@ static void register_robot_move_to_pos()
     robot_move_to_pos_args.psi = arg_dbl1(NULL, NULL, "<psi>", "psi position in deg (double)");
     robot_move_to_pos_args.theta = arg_dbl1(NULL, NULL, "<theta>", "theta position in deg (double)");
     robot_move_to_pos_args.rpm = arg_dbl1(NULL, NULL, "<rpm>", "speed in RPM (float)");
-    robot_move_to_pos_args.interpolation = arg_int1(NULL, NULL, "<inter>", "interpolation type (n|a|l)");
+    robot_move_to_pos_args.interpolation = arg_str1(NULL, NULL, "<inter>", "interpolation type (n|a|l)");
     robot_move_to_pos_args.end = arg_end(12);
 
     const esp_console_cmd_t cmd = {

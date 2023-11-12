@@ -563,15 +563,20 @@ void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation)
     float ax_rpm[MOTORS_NUM];
 
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        joint_pos[i] = (double)get_motor_pos(i);
+
+    if (interpolation == 0) // no interpolation
     {
-        portENTER_CRITICAL(&motor_spinlock);
-        joint_pos[i] = (double)motor_pos[i];
-        portEXIT_CRITICAL(&motor_spinlock);
-
-        ax_rpm[i] = rpm;
+        // calculate inverse kinematics
+        calc_inv_kin(desired_pos, joint_pos);
+        // constraint joint positions
+        robot_check_constrains(joint_pos);
+        // move to new position
+        for (uint8_t i = 0; i < MOTORS_NUM; i++)
+            single_DOF_move(i, (float)joint_pos[i], rpm);
+        wait_for_motors_stop();
     }
-
-    if (interpolation == 1) // axes interpolation
+    else if (interpolation == 1) // axes interpolation
     {
         // calculate inverse kinematics
         calc_inv_kin(desired_pos, joint_pos);
@@ -613,12 +618,17 @@ void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation)
         {
             if (steps_num_mm != 0)
                 step_len_mm[i] = (desired_pos[i] - cur_pos[i]) / (double)steps_num_mm;
+            else
+                step_len_mm[i] = (desired_pos[i] - cur_pos[i]);
+
             if (steps_num_deg != 0)
                 step_len_deg[i] = (desired_pos[i + 3] - cur_pos[i + 3]) / (double)steps_num_deg;
+            else
+                step_len_deg[i] = (desired_pos[i + 3] - cur_pos[i + 3]);
         }
 
         // linear interpolation
-        while (steps_num_deg > 0 || steps_num_mm > 0)
+        do
         {
             // calculate new desired position
             for (uint8_t i = 0; i < 3; i++)
@@ -642,10 +652,16 @@ void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation)
             for (uint8_t i = 0; i < 6; i++)
                 cur_pos[i] = desired_pos[i];
 
-            steps_num_mm--;
-            steps_num_deg--;
+            if (steps_num_mm > 0)
+                steps_num_mm--;
+
+            if (steps_num_deg > 0)
+                steps_num_deg--;
         }
+        while (steps_num_deg > 0 || steps_num_mm > 0);
     }
+    else
+        ESP_LOGW(TAG, "invalid interpolation mode!");
 }
 
 
