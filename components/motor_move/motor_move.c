@@ -545,7 +545,17 @@ void robot_check_constrains(double* joint_pos)
     else if (joint_pos[2] < -135.0f)
         joint_pos[2] = -135.0f;
 
-    if (joint_pos[1] > 90.0f || joint_pos[1] < -90.0f || joint_pos[2] > 135.0f || joint_pos[2] < -135.0f)
+    for (uint8_t i = 3; i < 6; i++)
+    {
+        if (joint_pos[i] > 150.0f)
+            joint_pos[i] = 150.0f;
+        else if (joint_pos[i] < -150.0f)
+            joint_pos[i] = -150.0f;
+    }
+
+    if (joint_pos[1] > 90.0f || joint_pos[1] < -90.0f || joint_pos[2] > 135.0f || joint_pos[2] < -135.0f ||
+            joint_pos[3] > 150.0f || joint_pos[3] < -150.0f || joint_pos[4] > 150.0f || joint_pos[4] < -150.0f ||
+            joint_pos[5] > 150.0f || joint_pos[5] < -150.0f)
         ESP_LOGW(TAG, "out of constraints alert!");
 }
 
@@ -600,16 +610,16 @@ void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation)
         uint8_t max_i_deg = 0;
         for (uint8_t i = 0; i < 3; i++)
         {
-            if (desired_pos[max_i_mm] - cur_pos[max_i_mm] < desired_pos[i] - cur_pos[i])
+            if (fabs(desired_pos[max_i_mm] - cur_pos[max_i_mm]) < fabs(desired_pos[i] - cur_pos[i]))
                 max_i_mm = i;
 
-            if (desired_pos[max_i_deg + 3] - cur_pos[max_i_deg + 3] < desired_pos[i + 3] - cur_pos[i + 3])
+            if (fabs(desired_pos[max_i_deg + 3] - cur_pos[max_i_deg + 3]) < fabs(desired_pos[i + 3] - cur_pos[i + 3]))
                 max_i_deg = i + 3;
         }
 
         // calculate position step
-        uint32_t steps_num_mm = (uint32_t)((desired_pos[max_i_mm] - cur_pos[max_i_mm]) / (double)LINTERPOLATION_STEPS_MM);
-        uint32_t steps_num_deg = (uint32_t)((desired_pos[max_i_deg] - cur_pos[max_i_deg]) / (double)LINTERPOLATION_STEPS_DEG);
+        uint32_t steps_num_mm = (uint32_t)(fabs((desired_pos[max_i_mm] - cur_pos[max_i_mm]) / LINTERPOLATION_STEP_MM));
+        uint32_t steps_num_deg = (uint32_t)(fabs((desired_pos[max_i_deg] - cur_pos[max_i_deg]) / LINTERPOLATION_STEP_DEG));
 
         double step_len_mm[3] = {0.0f, 0.0f, 0.0f};
         double step_len_deg[3] = {0.0f, 0.0f, 0.0f};
@@ -619,12 +629,12 @@ void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation)
             if (steps_num_mm != 0)
                 step_len_mm[i] = (desired_pos[i] - cur_pos[i]) / (double)steps_num_mm;
             else
-                step_len_mm[i] = (desired_pos[i] - cur_pos[i]);
+                step_len_mm[i] = desired_pos[i] - cur_pos[i];
 
             if (steps_num_deg != 0)
                 step_len_deg[i] = (desired_pos[i + 3] - cur_pos[i + 3]) / (double)steps_num_deg;
             else
-                step_len_deg[i] = (desired_pos[i + 3] - cur_pos[i + 3]);
+                step_len_deg[i] = desired_pos[i + 3] - cur_pos[i + 3];
         }
 
         // linear interpolation
@@ -652,13 +662,19 @@ void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation)
             for (uint8_t i = 0; i < 6; i++)
                 cur_pos[i] = desired_pos[i];
 
-            if (steps_num_mm > 0)
+            if (steps_num_mm > 1)
                 steps_num_mm--;
+            else
+                for (uint8_t i = 0; i < 3; i++)
+                    step_len_mm[i] = 0.0f;
 
-            if (steps_num_deg > 0)
+            if (steps_num_deg > 1)
                 steps_num_deg--;
+            else
+                for (uint8_t i = 0; i < 3; i++)
+                    step_len_deg[i] = 0.0f;
         }
-        while (steps_num_deg > 0 || steps_num_mm > 0);
+        while (steps_num_deg > 1 || steps_num_mm > 1);
     }
     else
         ESP_LOGW(TAG, "invalid interpolation mode!");

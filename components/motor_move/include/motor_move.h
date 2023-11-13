@@ -38,7 +38,7 @@
 #define MKS_MIN_RPM              (30.0f / GEAR_RATIO) // MKS servo minimum RPM
 #define MKS_MAX_RPM              (24500.0f / GEAR_RATIO) // MKS servo maximum RPM
 #define AX_MIN_RPM               0.111f // AX servo minimum RPM
-#define AX_MAX_RPM               102.0f // AX servo maximum RPM
+#define AX_MAX_RPM               100.0f // AX servo maximum RPM
 
 #define EMM42_ACCEL              255 // emm42 servo acceleration
 #define MKS_ACCEL                0 // MKS servo acceleration
@@ -48,8 +48,8 @@
 #define FLOAT_PRECISION          100000.0f // float precision
 #define NVS_DATA_KEY_SIZE        12 // NVS key size
 
-#define LINTERPOLATION_STEPS_MM  10 // linear interpolation mm
-#define LINTERPOLATION_STEPS_DEG 5 // linear interpolation deg
+#define LINTERPOLATION_STEP_MM   10.0f // linear interpolation mm
+#define LINTERPOLATION_STEP_DEG  1.0f // linear interpolation deg
 
 
 float get_motor_pos(uint8_t DOF);
