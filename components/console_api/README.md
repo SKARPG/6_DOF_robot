@@ -8,7 +8,7 @@
     * `servo_get_pos <DOF>` - gets servo position,
     * `robot_jmove_to_pos <x> <y> <z> <phi> <psi> <theta> <rpm> <inter>` - moves robot end effector to a given position with a given speed in RPM and with a given interpolation type (n - none, a - axes interpolation, l - linear interpolation),
     * `servo_set_zero_pos <DOF>` - sets current position of a servo as zero,
-    * `robot_go_to_zero_pos <rpm>` - moves robot to zero position with a given speed in RPM with axes interpolation,
+    * `robot_go_to_zero_pos <rpm>` - moves robot to zero position with a given speed in RPM,
     * `robot_get_pos` - gets robot's end effector position.
 * `ctrl + c` - exits the console.
 

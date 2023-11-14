@@ -84,6 +84,13 @@ static uint64_t calc_period_us(float rpm)
     else
         ESP_LOGW(TAG, "calc_period_us: invalid RPM!");
 
+    // prevent locking engines at too low speeds
+    if (period_us > 1500000)
+    {
+        ESP_LOGW(TAG, "calc_period_us: too high period!");
+        period_us = 1500000;
+    }
+
     return period_us;
 }
 #endif // STEP_MODE_ENABLE
@@ -94,9 +101,10 @@ static uint64_t calc_period_us(float rpm)
  * 
  * @param DOF number of DOF
  * @param rpm desired speed in rpm
+ * @param accel_phase acceleration percentage (inactive in UART mode)
  * @return calculated speed
  */
-static int16_t calc_speed(uint8_t DOF, float rpm)
+static int16_t calc_speed(uint8_t DOF, float rpm, float accel_phase)
 {
     int16_t speed = 0;
 
@@ -123,8 +131,7 @@ static int16_t calc_speed(uint8_t DOF, float rpm)
         else if (DOF == 3 || DOF == 4 || DOF == 5)
         {
 #ifdef STEP_MODE_ENABLE
-            if (EMM42_ACCEL_PER == MKS_ACCEL_PER)
-                rpm = rpm / (1.0f + 2.0f * EMM42_ACCEL_PER);
+            rpm = rpm / (1.0f + 2.0f * accel_phase);
 #endif // STEP_MODE_ENABLE
 
             speed = (int16_t)(rpm / AX_MAX_RPM * 1023.0f);
@@ -140,8 +147,8 @@ static int16_t calc_speed(uint8_t DOF, float rpm)
         }
 
         // prevent locking engines at too low speed
-        if (speed == 0)
-            speed = 1;
+        if (speed < 5)
+            speed = 5;
     }
 
     return speed;
@@ -260,7 +267,7 @@ void wait_for_motors_stop()
                 float speed = motor_speed[i];
                 portEXIT_CRITICAL(&motor_spinlock);
 
-                single_DOF_move(i, motor_pos[i], speed);
+                single_DOF_move(i, motor_pos[i], speed, 0.0f);
             }
         }
     }
@@ -287,8 +294,9 @@ void wait_for_motors_stop()
  * @param DOF number of DOF
  * @param position desired position in degrees
  * @param rpm desired speed in rpm
+ * @param accel_phase acceleration percentage (inactive in UART mode)
  */
-void single_DOF_move(uint8_t DOF, float position, float rpm)
+void single_DOF_move(uint8_t DOF, float position, float rpm, float accel_phase)
 {
     portENTER_CRITICAL(&motor_spinlock);
     motor_speed[DOF] = rpm;
@@ -300,14 +308,15 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
     int16_t speed = 0;
 
 #ifndef STEP_MODE_ENABLE
+    accel_phase = 0.0f;
 
     if (rpm > 0.0f)
     {
-        speed = calc_speed(DOF, rpm);
+        speed = calc_speed(DOF, rpm, accel_phase);
     }
     else if (rpm < 0.0f)
     {
-        speed = calc_speed(DOF, -rpm);
+        speed = calc_speed(DOF, -rpm, accel_phase);
         position = -position;
     }
 
@@ -402,11 +411,11 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
     {
         if (rpm > 0.0f)
         {
-            speed = calc_speed(DOF, rpm);
+            speed = calc_speed(DOF, rpm, accel_phase);
         }
         else if (rpm < 0.0f)
         {
-            speed = calc_speed(DOF, -rpm);
+            speed = calc_speed(DOF, -rpm, accel_phase);
             position = -position;
         }
 
@@ -430,15 +439,15 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
     {
         case 0:
             if (period_us != 0 && pulses != 0)
-                emm42_servo_step_move(emm42_conf, 0, pulses, period_us);
+                emm42_servo_step_move(emm42_conf, 0, pulses, period_us, accel_phase);
             break;
         case 1:
             if (period_us != 0 && pulses != 0)
-                mks_servo_step_move(mks_conf, 0, pulses, period_us);
+                mks_servo_step_move(mks_conf, 0, pulses, period_us, accel_phase);
             break;
         case 2:
             if (period_us != 0 && pulses != 0)
-                emm42_servo_step_move(emm42_conf, 1, pulses, period_us);
+                emm42_servo_step_move(emm42_conf, 1, pulses, period_us, accel_phase);
             break;
         case 3:
             if (speed != 0)
@@ -490,41 +499,6 @@ void single_DOF_move(uint8_t DOF, float position, float rpm)
             portEXIT_CRITICAL(&motor_spinlock);
         }
     }
-}
-
-
-/**
- * @brief calculate current position of robot
- * 
- * @param cur_pos pointer to the array with current position in mm and degrees
- * @param joint_pos pointer to the array with current joint positions in degrees
-*/
-void calc_forward_kinematics(double* cur_pos, double* joint_pos)
-{
-    cur_pos[0] = DELTA2 * sin(joint_pos[0]) - DELTA1 * sin(joint_pos[0]) - DELTA3 * sin(joint_pos[0]) + L0 * cos(joint_pos[0]) * sin(joint_pos[1]) + DELTA5 * cos(joint_pos[4]) * sin(joint_pos[0]) - L1 * cos(joint_pos[0]) * cos(joint_pos[1]) * sin(joint_pos[2]) + L1 * cos(joint_pos[0]) * cos(joint_pos[2]) * sin(joint_pos[1]) + DELTA4 * cos(joint_pos[0]) * cos(joint_pos[1]) * cos(joint_pos[2]) * sin(joint_pos[3]) - DELTA4 * cos(joint_pos[0]) * cos(joint_pos[1]) * cos(joint_pos[3]) * sin(joint_pos[2]) + DELTA4 * cos(joint_pos[0]) * cos(joint_pos[2]) * cos(joint_pos[3]) * sin(joint_pos[1]) + DELTA4 * cos(joint_pos[0]) * sin(joint_pos[1]) * sin(joint_pos[2]) * sin(joint_pos[3]) + DELTA5 * cos(joint_pos[0]) * cos(joint_pos[1]) * sin(joint_pos[2]) * sin(joint_pos[3]) * sin(joint_pos[4]) - DELTA5 * cos(joint_pos[0]) * cos(joint_pos[2]) * sin(joint_pos[1]) * sin(joint_pos[3]) * sin(joint_pos[4]) + DELTA5 * cos(joint_pos[0]) * cos(joint_pos[3]) * sin(joint_pos[1]) * sin(joint_pos[2]) * sin(joint_pos[4]) + DELTA5 * cos(joint_pos[0]) * cos(joint_pos[1]) * cos(joint_pos[2]) * cos(joint_pos[3]) * sin(joint_pos[4]);
-
-    cur_pos[1] = DELTA1 * cos(joint_pos[0]) - DELTA2 * cos(joint_pos[0]) + DELTA3 * cos(joint_pos[0]) - DELTA5 * cos(joint_pos[0]) * cos(joint_pos[4]) + L0 * sin(joint_pos[0]) * sin(joint_pos[1]) - L1 * cos(joint_pos[1]) * sin(joint_pos[0]) * sin(joint_pos[2]) + L1 * cos(joint_pos[2]) * sin(joint_pos[0]) * sin(joint_pos[1]) + DELTA4 * cos(joint_pos[1]) * cos(joint_pos[2]) * sin(joint_pos[0]) * sin(joint_pos[3]) - DELTA4 * cos(joint_pos[1]) * cos(joint_pos[3]) * sin(joint_pos[0]) * sin(joint_pos[2]) + DELTA4 * cos(joint_pos[2]) * cos(joint_pos[3]) * sin(joint_pos[0]) * sin(joint_pos[1]) + DELTA4 * sin(joint_pos[0]) * sin(joint_pos[1]) * sin(joint_pos[2]) * sin(joint_pos[3]) + DELTA5 * cos(joint_pos[1]) * cos(joint_pos[2]) * cos(joint_pos[3]) * sin(joint_pos[0]) * sin(joint_pos[4]) + DELTA5 * cos(joint_pos[1]) * sin(joint_pos[0]) * sin(joint_pos[2]) * sin(joint_pos[3]) * sin(joint_pos[4]) - DELTA5 * cos(joint_pos[2]) * sin(joint_pos[0]) * sin(joint_pos[1]) * sin(joint_pos[3]) * sin(joint_pos[4]) + DELTA5 * cos(joint_pos[3]) * sin(joint_pos[0]) * sin(joint_pos[1]) * sin(joint_pos[2]) * sin(joint_pos[4]);
-
-    cur_pos[2] = DELTA0 + L0 * cos(joint_pos[1]) + L1 * cos(joint_pos[1]) * cos(joint_pos[2]) + L1 * sin(joint_pos[1]) * sin(joint_pos[2]) + DELTA4 * cos(joint_pos[1]) * cos(joint_pos[2]) * cos(joint_pos[3]) + DELTA4 * cos(joint_pos[1]) * sin(joint_pos[2]) * sin(joint_pos[3]) - DELTA4 * cos(joint_pos[2]) * sin(joint_pos[1]) * sin(joint_pos[3]) + DELTA4 * cos(joint_pos[3]) * sin(joint_pos[1]) * sin(joint_pos[2]) - DELTA5 * cos(joint_pos[1]) * cos(joint_pos[2]) * sin(joint_pos[3]) * sin(joint_pos[4]) + DELTA5 * cos(joint_pos[1]) * cos(joint_pos[3]) * sin(joint_pos[2]) * sin(joint_pos[4]) - DELTA5 * cos(joint_pos[2]) * cos(joint_pos[3]) * sin(joint_pos[1]) * sin(joint_pos[4]) - DELTA5 * sin(joint_pos[1]) * sin(joint_pos[2]) * sin(joint_pos[3]) * sin(joint_pos[4]);
-
-    double sin_phi = cos(joint_pos[1]) * cos(joint_pos[2]) * cos(joint_pos[3]) * cos(joint_pos[5]) + cos(joint_pos[1]) * cos(joint_pos[5]) * sin(joint_pos[2]) * sin(joint_pos[3]) - cos(joint_pos[2]) * cos(joint_pos[5]) * sin(joint_pos[1]) * sin(joint_pos[3]) + cos(joint_pos[3]) * cos(joint_pos[5]) * sin(joint_pos[1]) * sin(joint_pos[2]) + cos(joint_pos[1]) * cos(joint_pos[2]) * cos(joint_pos[4]) * sin(joint_pos[3]) * sin(joint_pos[5]) - cos(joint_pos[1]) * cos(joint_pos[3]) * cos(joint_pos[4]) * sin(joint_pos[2]) * sin(joint_pos[5]) + cos(joint_pos[2]) * cos(joint_pos[3]) * cos(joint_pos[4]) * sin(joint_pos[1]) * sin(joint_pos[5]) + cos(joint_pos[4]) * sin(joint_pos[1]) * sin(joint_pos[2]) * sin(joint_pos[3]) * sin(joint_pos[5]);
-    double cos_phi = cos(joint_pos[1]) * cos(joint_pos[3]) * sin(joint_pos[2]) * sin(joint_pos[4]) - cos(joint_pos[1]) * cos(joint_pos[2]) * sin(joint_pos[3]) * sin(joint_pos[4]) - cos(joint_pos[2]) * cos(joint_pos[3]) * sin(joint_pos[1]) * sin(joint_pos[4]) - sin(joint_pos[1]) * sin(joint_pos[2]) * sin(joint_pos[3]) * sin(joint_pos[4]);
-
-    cur_pos[3] = atan2(sin_phi, cos_phi);
-
-    double sin_psi = -(cos(joint_pos[1]) * cos(joint_pos[2]) * cos(joint_pos[3]) * sin(joint_pos[5]) + cos(joint_pos[1]) * sin(joint_pos[2]) * sin(joint_pos[3]) * sin(joint_pos[5]) - cos(joint_pos[2]) * sin(joint_pos[1]) * sin(joint_pos[3]) * sin(joint_pos[5]) + cos(joint_pos[3]) * sin(joint_pos[1]) * sin(joint_pos[2]) * sin(joint_pos[5]) - cos(joint_pos[1]) * cos(joint_pos[2]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[3]) + cos(joint_pos[1]) * cos(joint_pos[3]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[2]) - cos(joint_pos[2]) * cos(joint_pos[3]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[1]) - cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[1]) * sin(joint_pos[2]) * sin(joint_pos[3]));
-    double cos_psi = sqrt(pow((cos(joint_pos[0]) * cos(joint_pos[5]) * sin(joint_pos[4]) + cos(joint_pos[1]) * cos(joint_pos[2]) * sin(joint_pos[0]) * sin(joint_pos[3]) * sin(joint_pos[5]) - cos(joint_pos[1]) * cos(joint_pos[3]) * sin(joint_pos[0]) * sin(joint_pos[2]) * sin(joint_pos[5]) + cos(joint_pos[2]) * cos(joint_pos[3]) * sin(joint_pos[0]) * sin(joint_pos[1]) * sin(joint_pos[5]) + sin(joint_pos[0]) * sin(joint_pos[1]) * sin(joint_pos[2]) * sin(joint_pos[3]) * sin(joint_pos[5]) + cos(joint_pos[1]) * cos(joint_pos[2]) * cos(joint_pos[3]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[0]) + cos(joint_pos[1]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[0]) * sin(joint_pos[2]) * sin(joint_pos[3]) - cos(joint_pos[2]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[0]) * sin(joint_pos[1]) * sin(joint_pos[3]) + cos(joint_pos[3]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[0]) * sin(joint_pos[1]) * sin(joint_pos[2])), 2.0f) / pow((cos(joint_pos[0]) * cos(joint_pos[1]) * cos(joint_pos[2]) * sin(joint_pos[3]) * sin(joint_pos[5]) - cos(joint_pos[5]) * sin(joint_pos[0]) * sin(joint_pos[4]) - cos(joint_pos[0]) * cos(joint_pos[1]) * cos(joint_pos[3]) * sin(joint_pos[2]) * sin(joint_pos[5]) + cos(joint_pos[0]) * cos(joint_pos[2]) * cos(joint_pos[3]) * sin(joint_pos[1]) * sin(joint_pos[5]) + cos(joint_pos[0]) * sin(joint_pos[1]) * sin(joint_pos[2]) * sin(joint_pos[3]) * sin(joint_pos[5]) + cos(joint_pos[0]) * cos(joint_pos[1]) * cos(joint_pos[2]) * cos(joint_pos[3]) * cos(joint_pos[4]) * cos(joint_pos[5]) + cos(joint_pos[0]) * cos(joint_pos[1]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[2]) * sin(joint_pos[3]) - cos(joint_pos[0]) * cos(joint_pos[2]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[1]) * sin(joint_pos[3]) + cos(joint_pos[0]) * cos(joint_pos[3]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[1]) * sin(joint_pos[2])), 2.0f) + 1.0f) * (cos(joint_pos[0]) * cos(joint_pos[1]) * cos(joint_pos[2]) * sin(joint_pos[3]) * sin(joint_pos[5]) - cos(joint_pos[5]) * sin(joint_pos[0]) * sin(joint_pos[4]) - cos(joint_pos[0]) * cos(joint_pos[1]) * cos(joint_pos[3]) * sin(joint_pos[2]) * sin(joint_pos[5]) + cos(joint_pos[0]) * cos(joint_pos[2]) * cos(joint_pos[3]) * sin(joint_pos[1]) * sin(joint_pos[5]) + cos(joint_pos[0]) * sin(joint_pos[1]) * sin(joint_pos[2]) * sin(joint_pos[3]) * sin(joint_pos[5]) + cos(joint_pos[0]) * cos(joint_pos[1]) * cos(joint_pos[2]) * cos(joint_pos[3]) * cos(joint_pos[4]) * cos(joint_pos[5]) + cos(joint_pos[0]) * cos(joint_pos[1]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[2]) * sin(joint_pos[3]) - cos(joint_pos[0]) * cos(joint_pos[2]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[1]) * sin(joint_pos[3]) + cos(joint_pos[0]) * cos(joint_pos[3]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[1]) * sin(joint_pos[2]));
-
-    cur_pos[4] = atan2(sin_psi, cos_psi);
-
-    double sin_theta = cos(joint_pos[0]) * cos(joint_pos[5]) * sin(joint_pos[4]) + cos(joint_pos[1]) * cos(joint_pos[2]) * sin(joint_pos[0]) * sin(joint_pos[3]) * sin(joint_pos[5]) - cos(joint_pos[1]) * cos(joint_pos[3]) * sin(joint_pos[0]) * sin(joint_pos[2]) * sin(joint_pos[5]) + cos(joint_pos[2]) * cos(joint_pos[3]) * sin(joint_pos[0]) * sin(joint_pos[1]) * sin(joint_pos[5]) + sin(joint_pos[0]) * sin(joint_pos[1]) * sin(joint_pos[2]) * sin(joint_pos[3]) * sin(joint_pos[5]) + cos(joint_pos[1]) * cos(joint_pos[2]) * cos(joint_pos[3]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[0]) + cos(joint_pos[1]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[0]) * sin(joint_pos[2]) * sin(joint_pos[3]) - cos(joint_pos[2]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[0]) * sin(joint_pos[1]) * sin(joint_pos[3]) + cos(joint_pos[3]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[0]) * sin(joint_pos[1]) * sin(joint_pos[2]);
-    double cos_theta = cos(joint_pos[0]) * cos(joint_pos[1]) * cos(joint_pos[2]) * sin(joint_pos[3]) * sin(joint_pos[5]) - cos(joint_pos[5]) * sin(joint_pos[0]) * sin(joint_pos[4]) - cos(joint_pos[0]) * cos(joint_pos[1]) * cos(joint_pos[3]) * sin(joint_pos[2]) * sin(joint_pos[5]) + cos(joint_pos[0]) * cos(joint_pos[2]) * cos(joint_pos[3]) * sin(joint_pos[1]) * sin(joint_pos[5]) + cos(joint_pos[0]) * sin(joint_pos[1]) * sin(joint_pos[2]) * sin(joint_pos[3]) * sin(joint_pos[5]) + cos(joint_pos[0]) * cos(joint_pos[1]) * cos(joint_pos[2]) * cos(joint_pos[3]) * cos(joint_pos[4]) * cos(joint_pos[5]) + cos(joint_pos[0]) * cos(joint_pos[1]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[2]) * sin(joint_pos[3]) - cos(joint_pos[0]) * cos(joint_pos[2]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[1]) * sin(joint_pos[3]) + cos(joint_pos[0]) * cos(joint_pos[3]) * cos(joint_pos[4]) * cos(joint_pos[5]) * sin(joint_pos[1]) * sin(joint_pos[2]);
-
-    cur_pos[5] = atan2(sin_theta, cos_theta);
-
-    // convert radians to degrees
-    for (uint8_t i = 3; i < 6; i++)
-        cur_pos[i] = cur_pos[i] * 180.0f / M_PI;
 }
 
 
@@ -583,7 +557,7 @@ void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation)
         robot_check_constrains(joint_pos);
         // move to new position
         for (uint8_t i = 0; i < MOTORS_NUM; i++)
-            single_DOF_move(i, (float)joint_pos[i], rpm);
+            single_DOF_move(i, (float)joint_pos[i], rpm, STEP_ACCEL);
         wait_for_motors_stop();
     }
     else if (interpolation == 1) // axes interpolation
@@ -596,14 +570,14 @@ void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation)
         axes_interpolation(rpm, joint_pos, ax_rpm);
         // move to new position
         for (uint8_t i = 0; i < MOTORS_NUM; i++)
-            single_DOF_move(i, (float)joint_pos[i], ax_rpm[i]);
+            single_DOF_move(i, (float)joint_pos[i], ax_rpm[i], STEP_ACCEL);
         wait_for_motors_stop();
     }
     else if (interpolation == 2) // linear interpolation
     {
         double cur_pos[6];
         // calculate current position
-        calc_forward_kinematics(cur_pos, joint_pos);
+        calc_forw_kin(cur_pos, joint_pos);
 
         // find the largest position difference
         uint8_t max_i_mm = 0;
@@ -637,9 +611,30 @@ void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation)
                 step_len_deg[i] = desired_pos[i + 3] - cur_pos[i + 3];
         }
 
+        // calculate first new desired position
+        for (uint8_t i = 0; i < 3; i++)
+        {
+            desired_pos[i] = cur_pos[i] + step_len_mm[i];
+            desired_pos[i + 3] = cur_pos[i + 3] + step_len_deg[i];
+        }
+        // calculate inverse kinematics
+        calc_inv_kin(desired_pos, joint_pos);
+        // constraint joint positions
+        robot_check_constrains(joint_pos);
+        // calculate speeds for each motor
+        axes_interpolation(rpm, joint_pos, ax_rpm);
+
         // linear interpolation
         do
         {
+            // move to new position
+            for (uint8_t i = 0; i < MOTORS_NUM; i++)
+                single_DOF_move(i, (float)joint_pos[i], ax_rpm[i], 0.0f);
+
+            // set new current position
+            for (uint8_t i = 0; i < 6; i++)
+                cur_pos[i] = desired_pos[i];
+
             // calculate new desired position
             for (uint8_t i = 0; i < 3; i++)
             {
@@ -654,13 +649,7 @@ void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation)
             // calculate speeds for each motor
             axes_interpolation(rpm, joint_pos, ax_rpm);
 
-            // move to new position
-            for (uint8_t i = 0; i < MOTORS_NUM; i++)
-                single_DOF_move(i, (float)joint_pos[i], ax_rpm[i]);
             wait_for_motors_stop();
-
-            for (uint8_t i = 0; i < 6; i++)
-                cur_pos[i] = desired_pos[i];
 
             if (steps_num_mm > 1)
                 steps_num_mm--;

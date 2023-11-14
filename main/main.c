@@ -75,7 +75,7 @@ void app_main(void)
 
     // go to zero position
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
-        single_DOF_move(i, 0.0f, rpm);
+        single_DOF_move(i, 0.0f, rpm, STEP_ACCEL);
     wait_for_motors_stop();
 
     // start console

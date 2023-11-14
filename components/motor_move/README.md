@@ -12,6 +12,7 @@
 * Sometimes when multiple motors are running at the same time, there is an UART error (it is fixed by resending the command).
 * All motors got CW orientation (positive angle is clockwise).
 * AX servos can go from -150.0 to 150.0 degrees.
+* Set default acceleration percentage for STEP/DIR mode using `STEP_ACCEL` in `motor_move.h`.
 
 ## To do list:
 * debug and test

@@ -26,7 +26,7 @@
 
 #define MOTORS_NUM               6 // number of motors
 
-#define EMM42_POS_TRESHOLD       0.05f // emm42 servo position treshold
+#define EMM42_POS_TRESHOLD       0.5f // emm42 servo position treshold
 #define MKS_POS_TRESHOLD         0.5f // MKS servo position treshold
 #define AX_POS_TRESHOLD          1.0f // AX servo position treshold
 
@@ -42,13 +42,14 @@
 
 #define EMM42_ACCEL              255 // emm42 servo acceleration
 #define MKS_ACCEL                0 // MKS servo acceleration
+#define STEP_ACCEL               0.1f // step acceleration
 
 #define UART_WAIT                (10 / portTICK_PERIOD_MS) // UART wait time
 
 #define FLOAT_PRECISION          100000.0f // float precision
 #define NVS_DATA_KEY_SIZE        12 // NVS key size
 
-#define LINTERPOLATION_STEP_MM   10.0f // linear interpolation mm
+#define LINTERPOLATION_STEP_MM   5.0f // linear interpolation mm
 #define LINTERPOLATION_STEP_DEG  1.0f // linear interpolation deg
 
 
@@ -56,9 +57,7 @@ float get_motor_pos(uint8_t DOF);
 
 void wait_for_motors_stop();
 
-void single_DOF_move(uint8_t DOF, float position, float rpm);
-
-void calc_forward_kinematics(double* cur_pos, double* joint_pos);
+void single_DOF_move(uint8_t DOF, float position, float rpm, float accel_phase);
 
 void robot_check_constrains(double* joint_pos);
 

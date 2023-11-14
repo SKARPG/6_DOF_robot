@@ -8,6 +8,28 @@ static rpi_i2c_conf_t rpi_i2c_conf;
 
 
 /**
+ * @brief convert radians to degrees
+ * 
+ * @param rad angle in radians
+*/
+static double rad2deg(double rad)
+{
+    return (rad * 180.0f / M_PI);
+}
+
+
+/**
+ * @brief convert degrees to radians
+ * 
+ * @param deg angle in degrees
+*/
+static double deg2rad(double deg)
+{
+    return (deg * M_PI / 180.0f);
+}
+
+
+/**
  * @brief initialize i2c connection with rpi
  * 
  * @param rpi_i2c_config struct with i2c parameters
@@ -135,4 +157,43 @@ void calc_inv_kin(double* desired_pos, double* joint_pos)
     // // for debug
     // for (uint8_t i = 0; i < 6; i++)
     //     ESP_LOGI(TAG, "received joint_pos[%u]: %f", i, joint_pos[i]);
+}
+
+
+/**
+ * @brief calculate current position of robot
+ * 
+ * @param cur_pos pointer to the array with current position in mm and degrees
+ * @param joint_pos pointer to the array with current joint positions in degrees
+*/
+void calc_forw_kin(double* cur_pos, double* joint_pos)
+{
+    double angle[6];
+    for (uint8_t i = 0; i < 6; i++)
+        angle[i] = deg2rad(joint_pos[i]);
+
+    cur_pos[0] = DELTA2 * sin(angle[0]) - DELTA1 * sin(angle[0]) - DELTA3 * sin(angle[0]) + L0 * cos(angle[0]) * sin(angle[1]) + DELTA5 * cos(angle[4]) * sin(angle[0]) - L1 * cos(angle[0]) * cos(angle[1]) * sin(angle[2]) + L1 * cos(angle[0]) * cos(angle[2]) * sin(angle[1]) + DELTA4 * cos(angle[0]) * cos(angle[1]) * cos(angle[2]) * sin(angle[3]) - DELTA4 * cos(angle[0]) * cos(angle[1]) * cos(angle[3]) * sin(angle[2]) + DELTA4 * cos(angle[0]) * cos(angle[2]) * cos(angle[3]) * sin(angle[1]) + DELTA4 * cos(angle[0]) * sin(angle[1]) * sin(angle[2]) * sin(angle[3]) + DELTA5 * cos(angle[0]) * cos(angle[1]) * sin(angle[2]) * sin(angle[3]) * sin(angle[4]) - DELTA5 * cos(angle[0]) * cos(angle[2]) * sin(angle[1]) * sin(angle[3]) * sin(angle[4]) + DELTA5 * cos(angle[0]) * cos(angle[3]) * sin(angle[1]) * sin(angle[2]) * sin(angle[4]) + DELTA5 * cos(angle[0]) * cos(angle[1]) * cos(angle[2]) * cos(angle[3]) * sin(angle[4]);
+
+    cur_pos[1] = DELTA1 * cos(angle[0]) - DELTA2 * cos(angle[0]) + DELTA3 * cos(angle[0]) - DELTA5 * cos(angle[0]) * cos(angle[4]) + L0 * sin(angle[0]) * sin(angle[1]) - L1 * cos(angle[1]) * sin(angle[0]) * sin(angle[2]) + L1 * cos(angle[2]) * sin(angle[0]) * sin(angle[1]) + DELTA4 * cos(angle[1]) * cos(angle[2]) * sin(angle[0]) * sin(angle[3]) - DELTA4 * cos(angle[1]) * cos(angle[3]) * sin(angle[0]) * sin(angle[2]) + DELTA4 * cos(angle[2]) * cos(angle[3]) * sin(angle[0]) * sin(angle[1]) + DELTA4 * sin(angle[0]) * sin(angle[1]) * sin(angle[2]) * sin(angle[3]) + DELTA5 * cos(angle[1]) * cos(angle[2]) * cos(angle[3]) * sin(angle[0]) * sin(angle[4]) + DELTA5 * cos(angle[1]) * sin(angle[0]) * sin(angle[2]) * sin(angle[3]) * sin(angle[4]) - DELTA5 * cos(angle[2]) * sin(angle[0]) * sin(angle[1]) * sin(angle[3]) * sin(angle[4]) + DELTA5 * cos(angle[3]) * sin(angle[0]) * sin(angle[1]) * sin(angle[2]) * sin(angle[4]);
+
+    cur_pos[2] = DELTA0 + L0 * cos(angle[1]) + L1 * cos(angle[1]) * cos(angle[2]) + L1 * sin(angle[1]) * sin(angle[2]) + DELTA4 * cos(angle[1]) * cos(angle[2]) * cos(angle[3]) + DELTA4 * cos(angle[1]) * sin(angle[2]) * sin(angle[3]) - DELTA4 * cos(angle[2]) * sin(angle[1]) * sin(angle[3]) + DELTA4 * cos(angle[3]) * sin(angle[1]) * sin(angle[2]) - DELTA5 * cos(angle[1]) * cos(angle[2]) * sin(angle[3]) * sin(angle[4]) + DELTA5 * cos(angle[1]) * cos(angle[3]) * sin(angle[2]) * sin(angle[4]) - DELTA5 * cos(angle[2]) * cos(angle[3]) * sin(angle[1]) * sin(angle[4]) - DELTA5 * sin(angle[1]) * sin(angle[2]) * sin(angle[3]) * sin(angle[4]);
+
+    double sin_phi = cos(angle[1]) * cos(angle[2]) * cos(angle[3]) * cos(angle[5]) + cos(angle[1]) * cos(angle[5]) * sin(angle[2]) * sin(angle[3]) - cos(angle[2]) * cos(angle[5]) * sin(angle[1]) * sin(angle[3]) + cos(angle[3]) * cos(angle[5]) * sin(angle[1]) * sin(angle[2]) + cos(angle[1]) * cos(angle[2]) * cos(angle[4]) * sin(angle[3]) * sin(angle[5]) - cos(angle[1]) * cos(angle[3]) * cos(angle[4]) * sin(angle[2]) * sin(angle[5]) + cos(angle[2]) * cos(angle[3]) * cos(angle[4]) * sin(angle[1]) * sin(angle[5]) + cos(angle[4]) * sin(angle[1]) * sin(angle[2]) * sin(angle[3]) * sin(angle[5]);
+    double cos_phi = cos(angle[1]) * cos(angle[3]) * sin(angle[2]) * sin(angle[4]) - cos(angle[1]) * cos(angle[2]) * sin(angle[3]) * sin(angle[4]) - cos(angle[2]) * cos(angle[3]) * sin(angle[1]) * sin(angle[4]) - sin(angle[1]) * sin(angle[2]) * sin(angle[3]) * sin(angle[4]);
+
+    cur_pos[3] = atan2(sin_phi, cos_phi);
+
+    double sin_psi = -(cos(angle[1]) * cos(angle[2]) * cos(angle[3]) * sin(angle[5]) + cos(angle[1]) * sin(angle[2]) * sin(angle[3]) * sin(angle[5]) - cos(angle[2]) * sin(angle[1]) * sin(angle[3]) * sin(angle[5]) + cos(angle[3]) * sin(angle[1]) * sin(angle[2]) * sin(angle[5]) - cos(angle[1]) * cos(angle[2]) * cos(angle[4]) * cos(angle[5]) * sin(angle[3]) + cos(angle[1]) * cos(angle[3]) * cos(angle[4]) * cos(angle[5]) * sin(angle[2]) - cos(angle[2]) * cos(angle[3]) * cos(angle[4]) * cos(angle[5]) * sin(angle[1]) - cos(angle[4]) * cos(angle[5]) * sin(angle[1]) * sin(angle[2]) * sin(angle[3]));
+    double cos_psi = sqrt(pow((cos(angle[0]) * cos(angle[5]) * sin(angle[4]) + cos(angle[1]) * cos(angle[2]) * sin(angle[0]) * sin(angle[3]) * sin(angle[5]) - cos(angle[1]) * cos(angle[3]) * sin(angle[0]) * sin(angle[2]) * sin(angle[5]) + cos(angle[2]) * cos(angle[3]) * sin(angle[0]) * sin(angle[1]) * sin(angle[5]) + sin(angle[0]) * sin(angle[1]) * sin(angle[2]) * sin(angle[3]) * sin(angle[5]) + cos(angle[1]) * cos(angle[2]) * cos(angle[3]) * cos(angle[4]) * cos(angle[5]) * sin(angle[0]) + cos(angle[1]) * cos(angle[4]) * cos(angle[5]) * sin(angle[0]) * sin(angle[2]) * sin(angle[3]) - cos(angle[2]) * cos(angle[4]) * cos(angle[5]) * sin(angle[0]) * sin(angle[1]) * sin(angle[3]) + cos(angle[3]) * cos(angle[4]) * cos(angle[5]) * sin(angle[0]) * sin(angle[1]) * sin(angle[2])), 2.0f) / pow((cos(angle[0]) * cos(angle[1]) * cos(angle[2]) * sin(angle[3]) * sin(angle[5]) - cos(angle[5]) * sin(angle[0]) * sin(angle[4]) - cos(angle[0]) * cos(angle[1]) * cos(angle[3]) * sin(angle[2]) * sin(angle[5]) + cos(angle[0]) * cos(angle[2]) * cos(angle[3]) * sin(angle[1]) * sin(angle[5]) + cos(angle[0]) * sin(angle[1]) * sin(angle[2]) * sin(angle[3]) * sin(angle[5]) + cos(angle[0]) * cos(angle[1]) * cos(angle[2]) * cos(angle[3]) * cos(angle[4]) * cos(angle[5]) + cos(angle[0]) * cos(angle[1]) * cos(angle[4]) * cos(angle[5]) * sin(angle[2]) * sin(angle[3]) - cos(angle[0]) * cos(angle[2]) * cos(angle[4]) * cos(angle[5]) * sin(angle[1]) * sin(angle[3]) + cos(angle[0]) * cos(angle[3]) * cos(angle[4]) * cos(angle[5]) * sin(angle[1]) * sin(angle[2])), 2.0f) + 1.0f) * (cos(angle[0]) * cos(angle[1]) * cos(angle[2]) * sin(angle[3]) * sin(angle[5]) - cos(angle[5]) * sin(angle[0]) * sin(angle[4]) - cos(angle[0]) * cos(angle[1]) * cos(angle[3]) * sin(angle[2]) * sin(angle[5]) + cos(angle[0]) * cos(angle[2]) * cos(angle[3]) * sin(angle[1]) * sin(angle[5]) + cos(angle[0]) * sin(angle[1]) * sin(angle[2]) * sin(angle[3]) * sin(angle[5]) + cos(angle[0]) * cos(angle[1]) * cos(angle[2]) * cos(angle[3]) * cos(angle[4]) * cos(angle[5]) + cos(angle[0]) * cos(angle[1]) * cos(angle[4]) * cos(angle[5]) * sin(angle[2]) * sin(angle[3]) - cos(angle[0]) * cos(angle[2]) * cos(angle[4]) * cos(angle[5]) * sin(angle[1]) * sin(angle[3]) + cos(angle[0]) * cos(angle[3]) * cos(angle[4]) * cos(angle[5]) * sin(angle[1]) * sin(angle[2]));
+
+    cur_pos[4] = atan2(sin_psi, cos_psi);
+
+    double sin_theta = cos(angle[0]) * cos(angle[5]) * sin(angle[4]) + cos(angle[1]) * cos(angle[2]) * sin(angle[0]) * sin(angle[3]) * sin(angle[5]) - cos(angle[1]) * cos(angle[3]) * sin(angle[0]) * sin(angle[2]) * sin(angle[5]) + cos(angle[2]) * cos(angle[3]) * sin(angle[0]) * sin(angle[1]) * sin(angle[5]) + sin(angle[0]) * sin(angle[1]) * sin(angle[2]) * sin(angle[3]) * sin(angle[5]) + cos(angle[1]) * cos(angle[2]) * cos(angle[3]) * cos(angle[4]) * cos(angle[5]) * sin(angle[0]) + cos(angle[1]) * cos(angle[4]) * cos(angle[5]) * sin(angle[0]) * sin(angle[2]) * sin(angle[3]) - cos(angle[2]) * cos(angle[4]) * cos(angle[5]) * sin(angle[0]) * sin(angle[1]) * sin(angle[3]) + cos(angle[3]) * cos(angle[4]) * cos(angle[5]) * sin(angle[0]) * sin(angle[1]) * sin(angle[2]);
+    double cos_theta = cos(angle[0]) * cos(angle[1]) * cos(angle[2]) * sin(angle[3]) * sin(angle[5]) - cos(angle[5]) * sin(angle[0]) * sin(angle[4]) - cos(angle[0]) * cos(angle[1]) * cos(angle[3]) * sin(angle[2]) * sin(angle[5]) + cos(angle[0]) * cos(angle[2]) * cos(angle[3]) * sin(angle[1]) * sin(angle[5]) + cos(angle[0]) * sin(angle[1]) * sin(angle[2]) * sin(angle[3]) * sin(angle[5]) + cos(angle[0]) * cos(angle[1]) * cos(angle[2]) * cos(angle[3]) * cos(angle[4]) * cos(angle[5]) + cos(angle[0]) * cos(angle[1]) * cos(angle[4]) * cos(angle[5]) * sin(angle[2]) * sin(angle[3]) - cos(angle[0]) * cos(angle[2]) * cos(angle[4]) * cos(angle[5]) * sin(angle[1]) * sin(angle[3]) + cos(angle[0]) * cos(angle[3]) * cos(angle[4]) * cos(angle[5]) * sin(angle[1]) * sin(angle[2]);
+
+    cur_pos[5] = atan2(sin_theta, cos_theta);
+
+    // convert radians to degrees
+    for (uint8_t i = 3; i < 6; i++)
+        cur_pos[i] = rad2deg(cur_pos[i]);
 }

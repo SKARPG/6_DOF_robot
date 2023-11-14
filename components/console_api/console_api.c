@@ -61,7 +61,7 @@ static int cmd_servo_move(int argc, char** argv)
 
     printf("moving servo: %d, to position: %f, with speed: %f ...\n", DOF, pos, rpm);
 
-    single_DOF_move(DOF - 1, pos, rpm);
+    single_DOF_move(DOF - 1, pos, rpm, STEP_ACCEL);
     wait_for_motors_stop();
 
     printf("done!\n");
@@ -365,7 +365,7 @@ static int cmd_robot_go_to_zero_pos(int argc, char** argv)
     printf("robot going to its zero position with speed %f ...\n", rpm);
 
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
-        single_DOF_move(i, 0.0f, rpm);
+        single_DOF_move(i, 0.0f, rpm, STEP_ACCEL);
     wait_for_motors_stop();
 
     printf("done!\n");
@@ -385,7 +385,7 @@ static void register_robot_go_to_zero_pos()
 
     const esp_console_cmd_t cmd = {
         .command = "robot_go_to_zero_pos",
-        .help = "Move robot to zero position with a given speed in RPM with axes interpolation",
+        .help = "Move robot to zero position with a given speed in RPM",
         .hint = NULL,
         .func = &cmd_robot_go_to_zero_pos,
         .argtable = &robot_go_to_zero_pos_args
@@ -426,7 +426,7 @@ static int cmd_robot_get_pos(int argc, char** argv)
     for (uint8_t i = 0; i < 6; i++)
         joint_pos[i] = get_motor_pos(i);
 
-    calc_forward_kinematics(cur_pos, joint_pos);
+    calc_forw_kin(cur_pos, joint_pos);
 
     for (uint8_t i = 0; i < 3; i++)
         printf("position %u: %f mm\n", i + 1, cur_pos[i]);
