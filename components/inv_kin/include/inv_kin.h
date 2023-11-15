@@ -24,7 +24,7 @@
 
 // zero position in mm
 #define X_ZERO          0.0f
-#define Y_ZERO          (DELTA1 - DELTA2 + DELTA3 - DELTA5)
+#define Y_ZERO          (DELTA1 - DELTA2 + DELTA3 + DELTA5)
 #define Z_ZERO          (DELTA0 + L0 + L1 + DELTA4)
 
 // zero orientation in radians
