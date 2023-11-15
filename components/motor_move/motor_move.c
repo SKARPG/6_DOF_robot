@@ -565,8 +565,10 @@ void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation)
         robot_check_constrains(joint_pos);
         // move to new position
         for (uint8_t i = 0; i < MOTORS_NUM; i++)
-            single_DOF_move(i, (float)joint_pos[i], rpm, STEP_ACCEL);
-        wait_for_motors_stop();
+            printf("%f ", joint_pos[i]);
+        printf("\n");
+            // single_DOF_move(i, (float)joint_pos[i], rpm, STEP_ACCEL);
+        // wait_for_motors_stop();
     }
     else if (interpolation == 1) // axes interpolation
     {
@@ -686,7 +688,7 @@ void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation)
  * @param mks_config pointer to a struct with mks servo parameters
  * @param rpi_i2c_config pointer to a struct with rpi i2c parameters
  */
-void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config, rpi_i2c_conf_t* rpi_i2c_config)
+void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config, linux_conf_t* linux_config)
 {
     portENTER_CRITICAL(&motor_spinlock);
     AX_conf = *AX_config;
@@ -698,7 +700,7 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
     mks_servo_init(mks_conf);
     AX_servo_init(AX_conf);
 
-    init_rpi_i2c(rpi_i2c_config);
+    init_linux_pc(linux_config);
 
     vTaskDelay(UART_WAIT);
 
@@ -799,7 +801,7 @@ void motor_deinit()
     emm42_servo_deinit(emm42_conf);
     mks_servo_deinit(mks_conf);
 
-    deinit_rpi_i2c();
+    deinit_linux_pc();
 
     vTaskDelay(UART_WAIT);
 

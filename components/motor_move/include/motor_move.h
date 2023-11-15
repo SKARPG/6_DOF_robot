@@ -63,7 +63,7 @@ void robot_check_constrains(double* joint_pos);
 
 void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation);
 
-void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config, rpi_i2c_conf_t* rpi_i2c_config);
+void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config, linux_conf_t* linux_config);
 
 void motor_deinit();
 

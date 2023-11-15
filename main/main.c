@@ -7,17 +7,17 @@
 #include "motor_move.h"
 #include "console_api.h"
 
-#define UART_NUM     UART_NUM_2
-#define UART_BAUD    115200
-#define TX_PIN       17
-#define RX_PIN       16
-#define RTS_PIN      15
+#define UART_NUM       UART_NUM_2
+#define UART_BAUD      115200
+#define TX_PIN         17
+#define RX_PIN         16
+#define RTS_PIN        15
 
-#define RPI_INTR_PIN 19
+#define RPI_INTR_PIN   19
 
-#define I2C_NUM      I2C_NUM_0
-#define I2C_SDA      21
-#define I2C_SCL      22
+#define LINUX_UART_NUM UART_NUM_1
+#define LINUX_TX       21
+#define LINUX_RX       22
 
 static const char *TAG = "main";
 
@@ -62,14 +62,13 @@ void app_main(void)
         .en_pin = mks_en_pin
     };
 
-    rpi_i2c_conf_t rpi_i2c_config = {
-        .i2c_port = I2C_NUM,
-        .sda_pin = I2C_SDA,
-        .scl_pin = I2C_SCL,
-        .isr_pin = RPI_INTR_PIN
+    linux_conf_t linux_config = {
+        .uart_port = LINUX_UART_NUM,
+        .tx_pin = LINUX_TX,
+        .rx_pin = LINUX_RX
     };
 
-    motor_init(&AX_config, &emm42_config, &mks_config, &rpi_i2c_config);
+    motor_init(&AX_config, &emm42_config, &mks_config, &linux_config);
 
     float rpm = 2.0f;
 

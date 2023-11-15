@@ -2,9 +2,9 @@
 #include "inv_kin.h"
 
 static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
-static rpi_i2c_conf_t rpi_i2c_conf;
+static linux_conf_t linux_conf;
 
-// static const char* TAG = "rpi_i2c_inv_kin";
+static const char* TAG = "linux_conf_inv_kin";
 
 
 /**
@@ -30,59 +30,53 @@ static double deg2rad(double deg)
 
 
 /**
- * @brief initialize i2c connection with rpi
+ * @brief initialize uart connection with linux pc
  * 
- * @param rpi_i2c_config struct with i2c parameters
+ * @param linux_conf_config struct with uart parameters
  */
-void init_rpi_i2c(rpi_i2c_conf_t* rpi_i2c_config)
+void init_linux_pc(linux_conf_t* linux_config)
 {
     portENTER_CRITICAL(&mux);
-    rpi_i2c_conf = *rpi_i2c_config;
+    linux_conf = *linux_config;
     portEXIT_CRITICAL(&mux);
 
-    gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.pin_bit_mask = (1 << rpi_i2c_conf.isr_pin);
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    io_conf.pull_up_en = 0;
-    io_conf.pull_down_en = 0;
-    gpio_config(&io_conf);
-    gpio_set_level(rpi_i2c_conf.isr_pin, 0);
+    // configure UART
+    uart_config_t uart_config = {
+            .baud_rate = UART_BAUD,
+            .data_bits = UART_DATA_8_BITS,
+            .parity = UART_PARITY_DISABLE,
+            .stop_bits = UART_STOP_BITS_1,
+            .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+            .rx_flow_ctrl_thresh = 0,
+            .source_clk = UART_SCLK_DEFAULT
+        };
 
-    i2c_config_t conf_slave = {
-        .sda_io_num = rpi_i2c_conf.sda_pin,
-        .sda_pullup_en = GPIO_PULLUP_ENABLE,
-        .scl_io_num = rpi_i2c_conf.scl_pin,
-        .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .mode = I2C_MODE_SLAVE,
-        .slave.addr_10bit_en = 0,
-        .slave.slave_addr = I2C_SLAVE_ADDR,
-        .slave.maximum_speed = I2C_FREQ_HZ,
-        .clk_flags = 0
-    };
-    i2c_param_config(rpi_i2c_conf.i2c_port, &conf_slave);
-    ESP_ERROR_CHECK(i2c_driver_install(rpi_i2c_conf.i2c_port, conf_slave.mode, 2048, 2048, 0));
+    if (uart_is_driver_installed(linux_conf.uart_port) == true)
+        ESP_ERROR_CHECK(uart_driver_delete(linux_conf.uart_port));
+
+    ESP_ERROR_CHECK(uart_driver_install(linux_conf.uart_port, 2048, 2048, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_param_config(linux_conf.uart_port, &uart_config));
+    ESP_ERROR_CHECK(uart_set_pin(linux_conf.uart_port, linux_conf.tx_pin, linux_conf.rx_pin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 
     // init connection
     uint8_t init = 0x00;
 
     while (init != INIT_KEY)
     {
-        gpio_set_level(rpi_i2c_conf.isr_pin, 1);
-        i2c_slave_read_buffer(rpi_i2c_conf.i2c_port, &init, sizeof(init), I2C_TIMEOUT_MS);
-        gpio_set_level(rpi_i2c_conf.isr_pin, 0);
+        uart_read_bytes(linux_conf.uart_port, &init, sizeof(init), portMAX_DELAY);
+
         vTaskDelay(1 / portTICK_PERIOD_MS);
     }
 }
 
 
 /**
- * @brief deinit i2c connection with rpi
+ * @brief deinit uart connection with linux pc
  * 
  */
-void deinit_rpi_i2c()
+void deinit_linux_pc()
 {
-    ESP_ERROR_CHECK(i2c_driver_delete(rpi_i2c_conf.i2c_port));
+    ESP_ERROR_CHECK(uart_driver_delete(linux_conf.uart_port));
 }
 
 
@@ -131,19 +125,27 @@ void calc_inv_kin(double* desired_pos, double* joint_pos)
 
     uint8_t r_joint_pos[6][8];
 
-    // notify rpi that esp wants to send data
-    gpio_set_level(rpi_i2c_conf.isr_pin, 1);
-
     // send data
     for (uint8_t i = 0; i < 6; i++)
-        i2c_slave_write_buffer(rpi_i2c_conf.i2c_port, w_desired_pos[i], sizeof(w_desired_pos[i]), I2C_TIMEOUT_MS);
+    {
+        uart_write_bytes(linux_conf.uart_port, (const char*)w_desired_pos[i], sizeof(w_desired_pos[i]));
+        ESP_ERROR_CHECK(uart_wait_tx_done(linux_conf.uart_port, UART_TIMEOUT));
+    }
 
     for (uint8_t i = 0; i < 6; i++)
-        i2c_slave_write_buffer(rpi_i2c_conf.i2c_port, w_joint_pos[i], sizeof(w_joint_pos[i]), I2C_TIMEOUT_MS);
+    {
+        uart_write_bytes(linux_conf.uart_port, (const char*)w_joint_pos[i], sizeof(w_joint_pos[i]));
+        ESP_ERROR_CHECK(uart_wait_tx_done(linux_conf.uart_port, UART_TIMEOUT));
+    }
 
     // receive data
     for (uint8_t i = 0; i < 6; i++)
-        i2c_slave_read_buffer(rpi_i2c_conf.i2c_port, r_joint_pos[i], sizeof(r_joint_pos[i]), portMAX_DELAY);
+    {
+        uint32_t rd_len = uart_read_bytes(linux_conf.uart_port, r_joint_pos[i], sizeof(r_joint_pos[i]), portMAX_DELAY);
+
+        if (rd_len != sizeof(r_joint_pos[i]))
+            ESP_LOGE(TAG, "uart_read_bytes() error");
+    }
 
     for (uint8_t i = 0; i < 6; i++)
         joint_pos[i] = (double)((int64_t)r_joint_pos[i][0] << 56 | (int64_t)r_joint_pos[i][1] << 48 |
@@ -151,8 +153,6 @@ void calc_inv_kin(double* desired_pos, double* joint_pos)
                                 (int64_t)r_joint_pos[i][4] << 24 | (int64_t)r_joint_pos[i][5] << 16 |
                                 (int64_t)r_joint_pos[i][6] << 8 | (int64_t)r_joint_pos[i][7] << 0
                                ) / DATA_ACCURACY;
-
-    gpio_set_level(rpi_i2c_conf.isr_pin, 0);
 
     // // for debug
     // for (uint8_t i = 0; i < 6; i++)
