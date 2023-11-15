@@ -55,14 +55,14 @@ static void axes_interpolation(float max_speed, double* joint_pos, float* ax_rpm
     ax_rpm[max_i] = max_speed;
 
     // v=s/t => t=s/v
-    float t = max_s / max_speed;
+    float t = max_s / max_speed; // deg / (rev/min) = min * deg / rev
 
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
     {
         if (i != max_i)
         {
             float cur_pos = get_motor_pos(i);
-            ax_rpm[i] = fabs(joint_pos[i] - cur_pos) / t;
+            ax_rpm[i] = fabs(joint_pos[i] - cur_pos) / t; // deg / (min * deg / rev) = rev / min = rpm
         }
     }
 }
@@ -84,11 +84,18 @@ static uint64_t calc_period_us(float rpm)
     else
         ESP_LOGW(TAG, "calc_period_us: invalid RPM!");
 
-    // prevent locking engines at too low speeds
-    if (period_us > 1500000)
+    // set max speed
+    if (period_us < (uint64_t)(1.0f / (AX_MAX_RPM * FULL_ROT * GEAR_RATIO / (60.0f * 1000000.0f))))
     {
-        ESP_LOGW(TAG, "calc_period_us: too high period!");
-        period_us = 1500000;
+        period_us = (uint64_t)(1.0f / (AX_MAX_RPM * FULL_ROT * GEAR_RATIO / (60.0f * 1000000.0f)));
+        ESP_LOGW(TAG, "calc_period_us: too high speed!");
+    }
+
+    // prevent locking engines at too low speeds
+    if (period_us > (uint64_t)(1.0f / (AX_MIN_RPM * FULL_ROT * GEAR_RATIO / (60.0f * 1000000.0f))))
+    {
+        period_us = (uint64_t)(1.0f / (AX_MIN_RPM * FULL_ROT * GEAR_RATIO / (60.0f * 1000000.0f)));
+        ESP_LOGW(TAG, "calc_period_us: too too low speed!");
     }
 
     return period_us;
@@ -131,6 +138,7 @@ static int16_t calc_speed(uint8_t DOF, float rpm, float accel_phase)
         else if (DOF == 3 || DOF == 4 || DOF == 5)
         {
 #ifdef STEP_MODE_ENABLE
+            // accel move takes 120 % of move without acceleration time
             rpm = rpm / (1.0f + 2.0f * accel_phase);
 #endif // STEP_MODE_ENABLE
 
@@ -146,7 +154,7 @@ static int16_t calc_speed(uint8_t DOF, float rpm, float accel_phase)
             ESP_LOGW(TAG, "calc_speed: invalid DOF!");
         }
 
-        // prevent locking engines at too low speed
+        // prevent locking engines at too low speeds
         if (speed < 5)
             speed = 5;
     }
