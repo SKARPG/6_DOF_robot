@@ -170,7 +170,7 @@ static struct {
     struct arg_dbl* phi;
     struct arg_dbl* psi;
     struct arg_dbl* theta;
-    struct arg_dbl* rpm;
+    struct arg_dbl* speed;
     struct arg_str* interpolation;
     struct arg_end* end;
 } robot_move_to_pos_args;
@@ -198,7 +198,7 @@ static int cmd_robot_move_to_pos(int argc, char** argv)
     assert(robot_move_to_pos_args.phi->count == 1);
     assert(robot_move_to_pos_args.psi->count == 1);
     assert(robot_move_to_pos_args.theta->count == 1);
-    assert(robot_move_to_pos_args.rpm->count == 1);
+    assert(robot_move_to_pos_args.speed->count == 1);
     assert(robot_move_to_pos_args.interpolation->count == 1);
     const double x = robot_move_to_pos_args.x->dval[0];
     const double y = robot_move_to_pos_args.y->dval[0];
@@ -206,7 +206,7 @@ static int cmd_robot_move_to_pos(int argc, char** argv)
     const double phi = robot_move_to_pos_args.phi->dval[0];
     const double psi = robot_move_to_pos_args.psi->dval[0];
     const double theta = robot_move_to_pos_args.theta->dval[0];
-    const float rpm = robot_move_to_pos_args.rpm->dval[0];
+    const float speed = robot_move_to_pos_args.speed->dval[0];
     const char* interpolation = robot_move_to_pos_args.interpolation->sval[0];
 
     if (interpolation[1] != '\0')
@@ -230,8 +230,9 @@ static int cmd_robot_move_to_pos(int argc, char** argv)
     }
 
     printf("moving robot to position...\n");
+
     double desired_pos[6] = {x, y, z, phi, psi, theta};
-    robot_move_to_pos(desired_pos, rpm, inter);
+    robot_move_to_pos(desired_pos, speed, inter);
 
     printf("done!\n");
 
@@ -251,13 +252,13 @@ static void register_robot_move_to_pos()
     robot_move_to_pos_args.phi = arg_dbl1(NULL, NULL, "<phi>", "phi position in deg (double)");
     robot_move_to_pos_args.psi = arg_dbl1(NULL, NULL, "<psi>", "psi position in deg (double)");
     robot_move_to_pos_args.theta = arg_dbl1(NULL, NULL, "<theta>", "theta position in deg (double)");
-    robot_move_to_pos_args.rpm = arg_dbl1(NULL, NULL, "<rpm>", "speed in RPM (float)");
+    robot_move_to_pos_args.speed = arg_dbl1(NULL, NULL, "<speed>", "speed in RPM (n, a) / mm/s (l) (float)");
     robot_move_to_pos_args.interpolation = arg_str1(NULL, NULL, "<inter>", "interpolation type (n|a|l)");
     robot_move_to_pos_args.end = arg_end(12);
 
     const esp_console_cmd_t cmd = {
         .command = "robot_move_to_pos",
-        .help = "Move robot end effector to a given position with given a speed in RPM with given interpolation",
+        .help = "Move robot end effector to a given position with given a speed with given interpolation",
         .hint = NULL,
         .func = &cmd_robot_move_to_pos,
         .argtable = &robot_move_to_pos_args

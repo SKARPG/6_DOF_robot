@@ -50,7 +50,7 @@
 #define NVS_DATA_KEY_SIZE        12 // NVS key size
 
 #define LINTERPOLATION_STEP_MM   5.0f // linear interpolation mm
-#define LINTERPOLATION_STEP_DEG  1.0f // linear interpolation deg
+#define LINTERPOLATION_STEP_DEG  1.5f // linear interpolation deg
 
 
 float get_motor_pos(uint8_t DOF);
@@ -61,7 +61,7 @@ void single_DOF_move(uint8_t DOF, float position, float rpm, float accel_phase);
 
 void robot_check_constrains(double* joint_pos);
 
-void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation);
+void robot_move_to_pos(double* desired_pos, float speed, uint8_t interpolation);
 
 void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config, linux_conf_t* linux_config);
 
