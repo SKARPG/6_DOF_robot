@@ -27,7 +27,6 @@ static const char nvs_offset_key[][NVS_DATA_KEY_SIZE] = {
 }; // array with nvs keys for positions offsets
 
 
-
 /**
  * @brief calculate speeds for each motor for linear interpolation
  * 
@@ -65,6 +64,39 @@ static void axes_interpolation(float max_speed, double* joint_pos, float* ax_rpm
             ax_rpm[i] = fabs(joint_pos[i] - cur_pos) / t; // deg / (min * deg / rev) = rev / min = rpm
         }
     }
+}
+
+
+/**
+ * @brief calculate speeds for each motor for linear interpolation
+ * 
+ * @param max_speed maximal desired speed in mm/min
+ * @param step_mm pointer to the array with step lengths in mm
+ * @param step_deg pointer to the array with step lengths in degrees
+ * @param joint_pos pointer to the array with goal positions in degrees
+ * @param lin_rpm pointer to the array with calculated speeds in rpm
+*/
+static void linear_interpolation(float max_speed, double* desired_pos, double* cur_pos, double* joint_pos, float* lin_rpm)
+{
+    // calculate path length
+    float s = sqrt(pow((desired_pos[0] - cur_pos[0]), 2.0f) + pow((desired_pos[1] - cur_pos[1]), 2.0f) +
+                    pow((desired_pos[2] - cur_pos[2]), 2.0f));
+
+    float t = s / max_speed; // mm / (mm / min) = min
+
+    float max_s = 0.0f;
+    // find the longest path
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+    {
+        float cur_joint_pos = get_motor_pos(i);
+
+        if (fabs(joint_pos[i] - cur_joint_pos) > max_s)
+            max_s = fabs(joint_pos[i] - cur_joint_pos); // rot
+    }
+
+    float rpm = max_s / t; // rot/min
+
+    axes_interpolation(rpm, joint_pos, lin_rpm);
 }
 
 
@@ -552,7 +584,7 @@ void robot_check_constrains(double* joint_pos)
 void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation)
 {
     double joint_pos[MOTORS_NUM];
-    float ax_rpm[MOTORS_NUM];
+    float joint_rpm[MOTORS_NUM];
 
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
         joint_pos[i] = (double)get_motor_pos(i);
@@ -577,10 +609,10 @@ void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation)
         // constraint joint positions
         robot_check_constrains(joint_pos);
         // calculate speeds for each motor
-        axes_interpolation(rpm, joint_pos, ax_rpm);
+        axes_interpolation(rpm, joint_pos, joint_rpm);
         // move to new position
         for (uint8_t i = 0; i < MOTORS_NUM; i++)
-            single_DOF_move(i, (float)joint_pos[i], ax_rpm[i], STEP_ACCEL);
+            single_DOF_move(i, (float)joint_pos[i], joint_rpm[i], STEP_ACCEL);
         wait_for_motors_stop();
     }
     else if (interpolation == 2) // linear interpolation
@@ -621,30 +653,9 @@ void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation)
                 step_len_deg[i] = desired_pos[i + 3] - cur_pos[i + 3];
         }
 
-        // calculate first new desired position
-        for (uint8_t i = 0; i < 3; i++)
-        {
-            desired_pos[i] = cur_pos[i] + step_len_mm[i];
-            desired_pos[i + 3] = cur_pos[i + 3] + step_len_deg[i];
-        }
-        // calculate inverse kinematics
-        calc_inv_kin(desired_pos, joint_pos);
-        // constraint joint positions
-        robot_check_constrains(joint_pos);
-        // calculate speeds for each motor
-        axes_interpolation(rpm, joint_pos, ax_rpm);
-
         // linear interpolation
         do
         {
-            // move to new position
-            for (uint8_t i = 0; i < MOTORS_NUM; i++)
-                single_DOF_move(i, (float)joint_pos[i], ax_rpm[i], 0.0f);
-
-            // set new current position
-            for (uint8_t i = 0; i < 6; i++)
-                cur_pos[i] = desired_pos[i];
-
             // calculate new desired position
             for (uint8_t i = 0; i < 3; i++)
             {
@@ -657,9 +668,16 @@ void robot_move_to_pos(double* desired_pos, float rpm, uint8_t interpolation)
             // constraint joint positions
             robot_check_constrains(joint_pos);
             // calculate speeds for each motor
-            axes_interpolation(rpm, joint_pos, ax_rpm);
+            linear_interpolation(rpm, desired_pos, cur_pos, joint_pos, joint_rpm);
 
+            // move to new position
+            for (uint8_t i = 0; i < MOTORS_NUM; i++)
+                single_DOF_move(i, (float)joint_pos[i], joint_rpm[i], 0.0f);
             wait_for_motors_stop();
+
+            // set new current position
+            for (uint8_t i = 0; i < 6; i++)
+                cur_pos[i] = desired_pos[i];
 
             if (steps_num_mm > 1)
                 steps_num_mm--;

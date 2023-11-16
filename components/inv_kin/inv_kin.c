@@ -67,6 +67,10 @@ void init_linux_pc(linux_conf_t* linux_config)
 
         vTaskDelay(1 / portTICK_PERIOD_MS);
     }
+
+    init = INIT_KEY;
+    uart_write_bytes(linux_conf.uart_port, (const char*)&init, sizeof(init));
+    ESP_ERROR_CHECK(uart_wait_tx_done(linux_conf.uart_port, UART_TIMEOUT));
 }
 
 
