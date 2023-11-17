@@ -12,6 +12,7 @@
 #include <math.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_log.h"
@@ -38,7 +39,7 @@
 #define MKS_MIN_RPM              (30.0f / GEAR_RATIO) // MKS servo minimum RPM
 #define MKS_MAX_RPM              (24500.0f / GEAR_RATIO) // MKS servo maximum RPM
 #define AX_MIN_RPM               (5.0f * 0.111f) // AX servo minimum RPM
-#define AX_MAX_RPM               100.0f // AX servo maximum RPM
+#define AX_MAX_RPM               105.0f // AX servo maximum RPM
 
 #define EMM42_ACCEL              255 // emm42 servo acceleration
 #define MKS_ACCEL                0 // MKS servo acceleration
@@ -49,8 +50,24 @@
 #define FLOAT_PRECISION          100000.0f // float precision
 #define NVS_DATA_KEY_SIZE        12 // NVS key size
 
-#define LINTERPOLATION_STEP_MM   5.0f // linear interpolation mm
-#define LINTERPOLATION_STEP_DEG  1.5f // linear interpolation deg
+#define LINTERPOLATION_STEP_MM   1.0f // linear interpolation mm
+#define LINTERPOLATION_STEP_DEG  0.5f // linear interpolation deg
+
+typedef struct lin_int_task_arg_t
+{
+    QueueHandle_t queue;
+    float max_speed;
+    double* desired_pos;
+    double* joint_pos;
+    double* joint_start_pos;
+} lin_int_task_arg_t;
+
+typedef struct lin_int_queue_arg_t
+{
+    double* joint_pos;
+    float* joint_rpm;
+    bool end_move;
+} lin_int_queue_arg_t;
 
 
 float get_motor_pos(uint8_t DOF);
@@ -58,8 +75,6 @@ float get_motor_pos(uint8_t DOF);
 void wait_for_motors_stop();
 
 void single_DOF_move(uint8_t DOF, float position, float rpm, float accel_phase);
-
-void robot_check_constrains(double* joint_pos);
 
 void robot_move_to_pos(double* desired_pos, float speed, uint8_t interpolation);
 
