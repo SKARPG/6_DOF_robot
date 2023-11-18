@@ -50,11 +50,12 @@
 #define FLOAT_PRECISION          100000.0f // float precision
 #define NVS_DATA_KEY_SIZE        12 // NVS key size
 
-#define LINTERPOLATION_STEP_MM   5.0f // linear interpolation mm
+#define LINTERPOLATION_STEP_MM   3.0f // linear interpolation mm
+
+#define QUEUE_SIZE               100 // queue for linear interpolation size
 
 typedef struct lin_int_task_arg_t
 {
-    QueueHandle_t queue;
     float max_speed;
     float* desired_pos;
     float* joint_pos;
@@ -63,8 +64,8 @@ typedef struct lin_int_task_arg_t
 
 typedef struct lin_int_queue_arg_t
 {
-    float* joint_pos;
-    float* joint_rpm;
+    float joint_pos[6];
+    float joint_rpm[6];
     bool end_move;
 } lin_int_queue_arg_t;
 

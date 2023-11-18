@@ -12,6 +12,7 @@
 static const char *TAG = "motor_move";
 
 static portMUX_TYPE motor_spinlock = portMUX_INITIALIZER_UNLOCKED; // spinlock for critical sections
+static QueueHandle_t rpm_queue = NULL;
 
 // globals
 static AX_conf_t AX_conf; // struct with AX servo parameters
@@ -199,12 +200,15 @@ static void lin_int_task(void* pvParameters)
         linear_interpolation(arg->max_speed, arg->desired_pos, cur_pos, arg->joint_pos, arg->joint_start_pos, joint_rpm);
 
         // move to new position
-        queue_arg.joint_rpm = joint_rpm;
-        queue_arg.joint_pos = arg->joint_pos;
+        for (uint8_t i = 0; i < 6; i++)
+        {
+            queue_arg.joint_pos[i] = arg->joint_pos[i];
+            queue_arg.joint_rpm[i] = joint_rpm[i];
+        }
         if (steps_num_mm == 1)
             queue_arg.end_move = true;
 
-        xQueueSend(arg->queue, &queue_arg, portMAX_DELAY);
+        xQueueSend(rpm_queue, &queue_arg, portMAX_DELAY);
 
         // set new current position
         for (uint8_t i = 0; i < 6; i++)
@@ -215,14 +219,6 @@ static void lin_int_task(void* pvParameters)
 
         if (steps_num_mm > 0)
             steps_num_mm--;
-        else
-        {
-            for (uint8_t i = 0; i < 3; i++)
-            {
-                step_len_mm[i] = 0.0f;
-                step_len_deg[i] = 0.0f;
-            }
-        }
     }
     while (steps_num_mm > 0);
 
@@ -427,23 +423,7 @@ void wait_for_motors_stop()
                 break;
             }
         }
-
-        // resend move command to AX servos
-        if (MOTORS_NUM > 3)
-        {
-            for (uint8_t i = 3; i < MOTORS_NUM; i++)
-            {
-                portENTER_CRITICAL(&motor_spinlock);
-                float speed = motor_speed[i];
-                portEXIT_CRITICAL(&motor_spinlock);
-
-                single_DOF_move(i, motor_pos[i], speed, 0.0f);
-            }
-        }
     }
-
-    // prevent position error accumulation
-    vTaskDelay(20 / portTICK_PERIOD_MS);
 
     float cur_pos = 0.0f;
 
@@ -717,10 +697,7 @@ void robot_move_to_pos(float* desired_pos, float speed, uint8_t interpolation)
     }
     else if (interpolation == 2) // linear interpolation
     {
-        QueueHandle_t rpm_queue = xQueueCreate(200, sizeof(joint_rpm));
-
         lin_int_task_arg_t task_arg = {
-            .queue = rpm_queue,
             .max_speed = speed,
             .desired_pos = desired_pos,
             .joint_pos = joint_pos,
@@ -737,11 +714,7 @@ void robot_move_to_pos(float* desired_pos, float speed, uint8_t interpolation)
             {
                 // move to new position
                 for (uint8_t i = 0; i < MOTORS_NUM; i++)
-                {
                     single_DOF_move(i, queue_arg.joint_pos[i], queue_arg.joint_rpm[i], 0.0f);
-                    printf("%d, %f, %f\n", i, queue_arg.joint_pos[i], queue_arg.joint_rpm[i]);
-                }
-                printf("\n");
 
                 wait_for_motors_stop();
             }
@@ -763,6 +736,10 @@ void robot_move_to_pos(float* desired_pos, float speed, uint8_t interpolation)
  */
 void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config, linux_conf_t* linux_config)
 {
+    rpm_queue = xQueueCreate(QUEUE_SIZE, sizeof(lin_int_queue_arg_t));
+    if (rpm_queue == NULL)
+        ESP_LOGE(TAG, "failed to create rpm queue!");
+
     portENTER_CRITICAL(&motor_spinlock);
     AX_conf = *AX_config;
     emm42_conf = *emm42_config;
