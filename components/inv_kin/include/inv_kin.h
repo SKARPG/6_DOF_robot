@@ -44,6 +44,6 @@ void init_linux_pc(linux_conf_t* linux_config);
 
 void deinit_linux_pc();
 
-void calc_inv_kin(double* desired_pos, double* joint_pos);
+void calc_inv_kin(float* desired_pos, float* joint_pos);
 
-void calc_forw_kin(double* cur_pos, double* joint_pos);
+void calc_forw_kin(float* cur_pos, float* joint_pos);

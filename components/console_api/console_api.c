@@ -200,12 +200,12 @@ static int cmd_robot_move_to_pos(int argc, char** argv)
     assert(robot_move_to_pos_args.theta->count == 1);
     assert(robot_move_to_pos_args.speed->count == 1);
     assert(robot_move_to_pos_args.interpolation->count == 1);
-    const double x = robot_move_to_pos_args.x->dval[0];
-    const double y = robot_move_to_pos_args.y->dval[0];
-    const double z = robot_move_to_pos_args.z->dval[0];
-    const double phi = robot_move_to_pos_args.phi->dval[0];
-    const double psi = robot_move_to_pos_args.psi->dval[0];
-    const double theta = robot_move_to_pos_args.theta->dval[0];
+    const float x = robot_move_to_pos_args.x->dval[0];
+    const float y = robot_move_to_pos_args.y->dval[0];
+    const float z = robot_move_to_pos_args.z->dval[0];
+    const float phi = robot_move_to_pos_args.phi->dval[0];
+    const float psi = robot_move_to_pos_args.psi->dval[0];
+    const float theta = robot_move_to_pos_args.theta->dval[0];
     const float speed = robot_move_to_pos_args.speed->dval[0];
     const char* interpolation = robot_move_to_pos_args.interpolation->sval[0];
 
@@ -231,7 +231,7 @@ static int cmd_robot_move_to_pos(int argc, char** argv)
 
     printf("moving robot to position...\n");
 
-    double desired_pos[6] = {x, y, z, phi, psi, theta};
+    float desired_pos[6] = {x, y, z, phi, psi, theta};
     robot_move_to_pos(desired_pos, speed, inter);
 
     printf("done!\n");
@@ -246,12 +246,12 @@ static int cmd_robot_move_to_pos(int argc, char** argv)
  */
 static void register_robot_move_to_pos()
 {
-    robot_move_to_pos_args.x = arg_dbl1(NULL, NULL, "<x>", "x position in mm (double)");
-    robot_move_to_pos_args.y = arg_dbl1(NULL, NULL, "<y>", "y position in mm (double)");
-    robot_move_to_pos_args.z = arg_dbl1(NULL, NULL, "<z>", "z position in mm (double)");
-    robot_move_to_pos_args.phi = arg_dbl1(NULL, NULL, "<phi>", "phi position in deg (double)");
-    robot_move_to_pos_args.psi = arg_dbl1(NULL, NULL, "<psi>", "psi position in deg (double)");
-    robot_move_to_pos_args.theta = arg_dbl1(NULL, NULL, "<theta>", "theta position in deg (double)");
+    robot_move_to_pos_args.x = arg_dbl1(NULL, NULL, "<x>", "x position in mm (float)");
+    robot_move_to_pos_args.y = arg_dbl1(NULL, NULL, "<y>", "y position in mm (float)");
+    robot_move_to_pos_args.z = arg_dbl1(NULL, NULL, "<z>", "z position in mm (float)");
+    robot_move_to_pos_args.phi = arg_dbl1(NULL, NULL, "<phi>", "phi position in deg (float)");
+    robot_move_to_pos_args.psi = arg_dbl1(NULL, NULL, "<psi>", "psi position in deg (float)");
+    robot_move_to_pos_args.theta = arg_dbl1(NULL, NULL, "<theta>", "theta position in deg (float)");
     robot_move_to_pos_args.speed = arg_dbl1(NULL, NULL, "<speed>", "speed in RPM (n, a) / mm/s (l) (float)");
     robot_move_to_pos_args.interpolation = arg_str1(NULL, NULL, "<inter>", "interpolation type (n|a|l)");
     robot_move_to_pos_args.end = arg_end(12);
@@ -421,8 +421,8 @@ static int cmd_robot_get_pos(int argc, char** argv)
         return 1;
     }
 
-    double cur_pos[6];
-    double joint_pos[6];
+    float cur_pos[6];
+    float joint_pos[6];
 
     for (uint8_t i = 0; i < 6; i++)
         joint_pos[i] = get_motor_pos(i);

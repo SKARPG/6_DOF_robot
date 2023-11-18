@@ -50,21 +50,20 @@
 #define FLOAT_PRECISION          100000.0f // float precision
 #define NVS_DATA_KEY_SIZE        12 // NVS key size
 
-#define LINTERPOLATION_STEP_MM   1.0f // linear interpolation mm
-#define LINTERPOLATION_STEP_DEG  0.5f // linear interpolation deg
+#define LINTERPOLATION_STEP_MM   5.0f // linear interpolation mm
 
 typedef struct lin_int_task_arg_t
 {
     QueueHandle_t queue;
     float max_speed;
-    double* desired_pos;
-    double* joint_pos;
-    double* joint_start_pos;
+    float* desired_pos;
+    float* joint_pos;
+    float* joint_start_pos;
 } lin_int_task_arg_t;
 
 typedef struct lin_int_queue_arg_t
 {
-    double* joint_pos;
+    float* joint_pos;
     float* joint_rpm;
     bool end_move;
 } lin_int_queue_arg_t;
@@ -76,7 +75,7 @@ void wait_for_motors_stop();
 
 void single_DOF_move(uint8_t DOF, float position, float rpm, float accel_phase);
 
-void robot_move_to_pos(double* desired_pos, float speed, uint8_t interpolation);
+void robot_move_to_pos(float* desired_pos, float speed, uint8_t interpolation);
 
 void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config, linux_conf_t* linux_config);
 
