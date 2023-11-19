@@ -70,6 +70,10 @@ typedef struct lin_int_queue_arg_t
 } lin_int_queue_arg_t;
 
 
+void robot_check_constrains(float* joint_pos);
+
+void axes_interpolation(float max_rpm, float* joint_pos, float* joint_start_pos, float* ax_rpm);
+
 float get_motor_pos(uint8_t DOF);
 
 void wait_for_motors_stop();

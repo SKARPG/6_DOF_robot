@@ -29,78 +29,6 @@ static const char nvs_offset_key[][NVS_DATA_KEY_SIZE] = {
 
 
 /**
- * @brief check if desired position is in constraints
- * 
- * @param joint_pos pointer to array with joint positions in degrees
-*/
-static void robot_check_constrains(float* joint_pos)
-{
-    if (joint_pos[1] > 90.0f)
-        joint_pos[1] = 90.0f;
-    else if (joint_pos[1] < -90.0f)
-        joint_pos[1] = -90.0f;
-    
-    if (joint_pos[2] > 135.0f)
-        joint_pos[2] = 135.0f;
-    else if (joint_pos[2] < -135.0f)
-        joint_pos[2] = -135.0f;
-
-    for (uint8_t i = 3; i < 6; i++)
-    {
-        if (joint_pos[i] > 150.0f)
-            joint_pos[i] = 150.0f;
-        else if (joint_pos[i] < -150.0f)
-            joint_pos[i] = -150.0f;
-    }
-
-    if (joint_pos[1] > 90.0f || joint_pos[1] < -90.0f || joint_pos[2] > 135.0f || joint_pos[2] < -135.0f ||
-            joint_pos[3] > 150.0f || joint_pos[3] < -150.0f || joint_pos[4] > 150.0f || joint_pos[4] < -150.0f ||
-            joint_pos[5] > 150.0f || joint_pos[5] < -150.0f)
-        ESP_LOGW(TAG, "out of constraints alert!");
-}
-
-
-/**
- * @brief calculate speeds for each motor for linear interpolation
- * 
- * @param max_rpm maximal desired speed in rpm
- * @param joint_pos array with goal positions in degrees
- * @param joint_start_pos array with start positions in degrees
- * @param ax_rpm array with calculated speeds in rpm
- */
-static void axes_interpolation(float max_rpm, float* joint_pos, float* joint_start_pos, float* ax_rpm)
-{
-    uint8_t max_i = 0;
-    float max_s = 0.0f;
-
-    // find the longest path
-    for (uint8_t i = 0; i < MOTORS_NUM; i++)
-    {
-        if (fabs(joint_pos[i] - joint_start_pos[i]) > max_s)
-        {
-            max_i = i;
-            max_s = fabs(joint_pos[i] - joint_start_pos[i]); // deg
-        }
-    }
-
-    ax_rpm[max_i] = max_rpm;
-
-    // v=s/t => t=s/v
-    float t = max_s / max_rpm; // deg/(rev/min) = min*deg/rev
-
-    for (uint8_t i = 0; i < MOTORS_NUM; i++)
-    {
-        if (i != max_i)
-            ax_rpm[i] = fabs(joint_pos[i] - joint_start_pos[i]) / t; // deg/(min*deg/rev) = rev/min = rpm
-
-        // check for NaN
-        if (isnan(ax_rpm[i]))
-            ax_rpm[i] = 2.0f;
-    }
-}
-
-
-/**
  * @brief calculate speeds for each motor for linear interpolation
  * 
  * @param max_speed maximal desired speed in mm/s
@@ -318,6 +246,78 @@ static int16_t calc_speed(uint8_t DOF, float rpm, float accel_phase)
     }
 
     return speed;
+}
+
+
+/**
+ * @brief check if desired position is in constraints
+ * 
+ * @param joint_pos pointer to array with joint positions in degrees
+*/
+void robot_check_constrains(float* joint_pos)
+{
+    if (joint_pos[1] > 90.0f)
+        joint_pos[1] = 90.0f;
+    else if (joint_pos[1] < -90.0f)
+        joint_pos[1] = -90.0f;
+    
+    if (joint_pos[2] > 135.0f)
+        joint_pos[2] = 135.0f;
+    else if (joint_pos[2] < -135.0f)
+        joint_pos[2] = -135.0f;
+
+    for (uint8_t i = 3; i < 6; i++)
+    {
+        if (joint_pos[i] > 150.0f)
+            joint_pos[i] = 150.0f;
+        else if (joint_pos[i] < -150.0f)
+            joint_pos[i] = -150.0f;
+    }
+
+    if (joint_pos[1] > 90.0f || joint_pos[1] < -90.0f || joint_pos[2] > 135.0f || joint_pos[2] < -135.0f ||
+            joint_pos[3] > 150.0f || joint_pos[3] < -150.0f || joint_pos[4] > 150.0f || joint_pos[4] < -150.0f ||
+            joint_pos[5] > 150.0f || joint_pos[5] < -150.0f)
+        ESP_LOGW(TAG, "out of constraints alert!");
+}
+
+
+/**
+ * @brief calculate speeds for each motor for linear interpolation
+ * 
+ * @param max_rpm maximal desired speed in rpm
+ * @param joint_pos array with goal positions in degrees
+ * @param joint_start_pos array with start positions in degrees
+ * @param ax_rpm array with calculated speeds in rpm
+ */
+void axes_interpolation(float max_rpm, float* joint_pos, float* joint_start_pos, float* ax_rpm)
+{
+    uint8_t max_i = 0;
+    float max_s = 0.0f;
+
+    // find the longest path
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+    {
+        if (fabs(joint_pos[i] - joint_start_pos[i]) > max_s)
+        {
+            max_i = i;
+            max_s = fabs(joint_pos[i] - joint_start_pos[i]); // deg
+        }
+    }
+
+    ax_rpm[max_i] = max_rpm;
+
+    // v=s/t => t=s/v
+    float t = max_s / max_rpm; // deg/(rev/min) = min*deg/rev
+
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+    {
+        if (i != max_i)
+            ax_rpm[i] = fabs(joint_pos[i] - joint_start_pos[i]) / t; // deg/(min*deg/rev) = rev/min = rpm
+
+        // check for NaN
+        if (isnan(ax_rpm[i]))
+            ax_rpm[i] = 2.0f;
+    }
 }
 
 
