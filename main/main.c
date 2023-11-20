@@ -81,8 +81,7 @@ void app_main(void)
     console_api_start();
 
     // save encoders position before power off
-    for (uint8_t i = 0; i < MOTORS_NUM; i++)
-        motor_save_enc_states(i);
+    motors_save_enc_states();
 
     motor_deinit();
 

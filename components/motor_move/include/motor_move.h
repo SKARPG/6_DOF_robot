@@ -88,4 +88,4 @@ void motor_deinit();
 
 void motor_set_zero_pos(uint8_t DOF);
 
-void motor_save_enc_states(uint8_t DOF);
+void motors_save_enc_states();

@@ -24,7 +24,7 @@ static float motor_pos_offset[MOTORS_NUM]; // array with saved motor position of
 
 static nvs_handle_t zero_pos_handle; // handle for nvs storage
 static const char nvs_offset_key[][NVS_DATA_KEY_SIZE] = {
-    "nvs_offset0", "nvs_offset1", "nvs_offset2", "nvs_offset3", "nvs_offset4", "nvs_offset5"
+    "nvs_offset0", "nvs_offset1", "nvs_offset2", "nvs_offset3", "nvs_offset4", "nvs_offset5", "is_cal"
 }; // array with nvs keys for positions offsets
 
 
@@ -827,8 +827,6 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
         }
     }
 
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-
     // get all motors positions
     for (uint32_t i = 0; i < MOTORS_NUM; i++)
     {
@@ -838,6 +836,38 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
         motor_pos[i] = cur_pos;
         portEXIT_CRITICAL(&motor_spinlock);
     }
+
+    // read calibration flag
+    int8_t is_calibrated;
+    err = nvs_get_i8(zero_pos_handle, nvs_offset_key[6], &is_calibrated);
+    switch (err)
+    {
+        case ESP_OK:
+            if (is_calibrated == 0)
+            {
+                ESP_LOGW(TAG, "Robot is not calibrated - set robot to zero position!");
+                for (uint8_t i = 0; i < MOTORS_NUM; i++)
+                    motor_set_zero_pos(i);
+            }
+            break;
+        case ESP_ERR_NVS_NOT_FOUND:
+            is_calibrated = 0;
+            ESP_LOGW(TAG, "The value is not initialized yet!");
+            break;
+        default :
+            ESP_LOGE(TAG, "Error (%s) reading!", esp_err_to_name(err));
+    }
+
+    // set new calibration flag
+    is_calibrated = 0;
+    err = nvs_set_i8(zero_pos_handle, nvs_offset_key[6], is_calibrated);
+    if (err != ESP_OK)
+        ESP_LOGE(TAG, "Error (%s) setting NVS value!", esp_err_to_name(err));
+
+    // commit written value
+    err = nvs_commit(zero_pos_handle);
+    if (err != ESP_OK)
+        ESP_LOGE(TAG, "Error (%s) committing NVS!", esp_err_to_name(err));
 }
 
 
@@ -897,37 +927,52 @@ void motor_set_zero_pos(uint8_t DOF)
 /**
  * @brief save encoder position to nvs before power off
  * 
- * @param DOF motor address
  */
-void motor_save_enc_states(uint8_t DOF)
+void motors_save_enc_states()
 {
-    portENTER_CRITICAL(&motor_spinlock);
-    float offset = motor_pos_offset[DOF];
-    portEXIT_CRITICAL(&motor_spinlock);
+    esp_err_t err;
 
-    if (DOF == 0 || DOF == 1 || DOF == 2)
+    for (uint8_t DOF = 0; DOF < MOTORS_NUM; DOF++)
     {
-        // get_motor_pos(DOF) = pos - offset
-        float enc = get_motor_pos(DOF) + offset;
-        offset -= enc;
+        portENTER_CRITICAL(&motor_spinlock);
+        float offset = motor_pos_offset[DOF];
+        portEXIT_CRITICAL(&motor_spinlock);
 
-        // mks servo encoder does not zero itself after reset
-        if (DOF == 1)
+        if (DOF == 0 || DOF == 1 || DOF == 2)
         {
-            while (offset > 180.0f)
-                offset -= 360.0f;
-            while (offset < -180.0f)
-                offset += 360.0f;
+            // get_motor_pos(DOF) = pos - offset
+            float enc = get_motor_pos(DOF) + offset;
+            offset -= enc;
+
+            // mks servo encoder does not zero itself after reset
+            if (DOF == 1)
+            {
+                while (offset > 180.0f)
+                    offset -= 360.0f;
+                while (offset < -180.0f)
+                    offset += 360.0f;
+            }
         }
+
+        portENTER_CRITICAL(&motor_spinlock);
+        motor_pos_offset[DOF] = offset;
+        portEXIT_CRITICAL(&motor_spinlock);
+
+        // write zero position to nvs
+        int32_t data = (int32_t)(offset * FLOAT_PRECISION);
+        err = nvs_set_i32(zero_pos_handle, nvs_offset_key[DOF], data);
+        if (err != ESP_OK)
+            ESP_LOGE(TAG, "Error (%s) setting NVS value!", esp_err_to_name(err));
+
+        // commit written value
+        err = nvs_commit(zero_pos_handle);
+        if (err != ESP_OK)
+            ESP_LOGE(TAG, "Error (%s) committing NVS!", esp_err_to_name(err));
     }
 
-    portENTER_CRITICAL(&motor_spinlock);
-    motor_pos_offset[DOF] = offset;
-    portEXIT_CRITICAL(&motor_spinlock);
-
-    // write zero position to nvs
-    int32_t data = (int32_t)(offset * FLOAT_PRECISION);
-    esp_err_t err = nvs_set_i32(zero_pos_handle, nvs_offset_key[DOF], data);
+    // save calibration flag
+    int8_t is_calibrated = 1;
+    err = nvs_set_i8(zero_pos_handle, nvs_offset_key[6], is_calibrated);
     if (err != ESP_OK)
         ESP_LOGE(TAG, "Error (%s) setting NVS value!", esp_err_to_name(err));
 
@@ -935,6 +980,4 @@ void motor_save_enc_states(uint8_t DOF)
     err = nvs_commit(zero_pos_handle);
     if (err != ESP_OK)
         ESP_LOGE(TAG, "Error (%s) committing NVS!", esp_err_to_name(err));
-
-    vTaskDelay(100 / portTICK_PERIOD_MS);
 }
