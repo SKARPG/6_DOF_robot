@@ -54,6 +54,7 @@
 #define LINTERPOLATION_STEP_MM   3.0f // linear interpolation mm
 
 #define QUEUE_SIZE               100 // queue for linear interpolation size
+#define MAX_POS_NUM              20 // max number of positions to learn
 
 typedef struct lin_int_task_arg_t
 {
@@ -90,3 +91,9 @@ void motor_deinit();
 void motor_set_zero_pos(uint8_t DOF);
 
 void motors_save_enc_states();
+
+void robot_learn_pos(float max_speed, uint32_t delay_ms);
+
+void robot_reset_learned_pos();
+
+void robot_move_to_learned_pos();

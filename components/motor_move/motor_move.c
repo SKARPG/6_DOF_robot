@@ -19,13 +19,15 @@ static AX_conf_t AX_conf; // struct with AX servo parameters
 static emm42_conf_t emm42_conf; // struct with emm42 servo parameters
 static mks_conf_t mks_conf; // struct with mks servo parameters
 static float motor_pos[MOTORS_NUM]; // array with current positions for each motor in degrees
-static float motor_speed[MOTORS_NUM]; // array with last speeds of each motor in rpm
 static float motor_pos_offset[MOTORS_NUM]; // array with saved motor position offsets in degrees
+static float** learn_joint_pos; // pointer to array with learned joint positions in degrees
+static uint8_t learn_pos_num = 0; // number of learned positions
 
 static nvs_handle_t zero_pos_handle; // handle for nvs storage
 static const char nvs_offset_key[][NVS_DATA_KEY_SIZE] = {
-    "nvs_offset0", "nvs_offset1", "nvs_offset2", "nvs_offset3", "nvs_offset4", "nvs_offset5", "is_cal"
+    "nvs_offset0", "nvs_offset1", "nvs_offset2", "nvs_offset3", "nvs_offset4", "nvs_offset5"
 }; // array with nvs keys for positions offsets
+static const char nvs_cal_flag_key[] = "is_cal"; // nvs key for calibration flag
 
 
 /**
@@ -356,8 +358,6 @@ float get_motor_pos(uint8_t DOF)
             break;
     }
 
-    vTaskDelay(UART_WAIT);
-
     // convert servo position to degrees
     if (DOF == 0 || DOF == 1 || DOF == 2)
         position = position / GEAR_RATIO;
@@ -425,8 +425,10 @@ void wait_for_motors_stop()
         }
     }
 
-    float cur_pos = 0.0f;
+    // prevent error accumulation
+    vTaskDelay(10 / portTICK_PERIOD_MS);
 
+    float cur_pos = 0.0f;
     for (uint32_t i = 0; i < MOTORS_NUM; i++)
     {
         cur_pos = get_motor_pos(i);
@@ -448,16 +450,13 @@ void wait_for_motors_stop()
  */
 void single_DOF_move(uint8_t DOF, float position, float rpm, float accel_phase)
 {
-    portENTER_CRITICAL(&motor_spinlock);
-    motor_speed[DOF] = rpm;
-    portEXIT_CRITICAL(&motor_spinlock);
-
     uint32_t pulses = 0;
     uint16_t AX_pos = 0;
 
     int16_t speed = 0;
 
 #ifndef STEP_MODE_ENABLE
+
     accel_phase = 0.0f;
 
     if (rpm > 0.0f)
@@ -618,8 +617,6 @@ void single_DOF_move(uint8_t DOF, float position, float rpm, float accel_phase)
 
 #endif // STEP_MODE_ENABLE
 
-    vTaskDelay(UART_WAIT);
-
     // update goal position
     if (rpm != 0)
     {
@@ -736,10 +733,16 @@ void robot_move_to_pos(float* desired_pos, float speed, uint8_t interpolation)
  */
 void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config, linux_conf_t* linux_config)
 {
+    learn_joint_pos = (float**)malloc(sizeof(float) * MAX_POS_NUM);
+    for (uint8_t i = 0; i < MAX_POS_NUM; i++)
+        learn_joint_pos[i] = (float*)malloc(sizeof(float) * (MOTORS_NUM + 2));
+
+    // init queue
     rpm_queue = xQueueCreate(QUEUE_SIZE, sizeof(lin_int_queue_arg_t));
     if (rpm_queue == NULL)
         ESP_LOGE(TAG, "failed to create rpm queue!");
 
+    // init UART connections
     portENTER_CRITICAL(&motor_spinlock);
     AX_conf = *AX_config;
     emm42_conf = *emm42_config;
@@ -756,7 +759,7 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
 
     if (MOTORS_NUM > 3)
     {
-        for (uint32_t i = 4; i < MOTORS_NUM + 1; i++)
+        for (uint8_t i = 4; i < MOTORS_NUM + 1; i++)
         {
             AX_servo_write_register(AX_conf, i, AX_RETURN_LEVEL, AX_RETURN_READ);
             vTaskDelay(UART_WAIT);
@@ -781,14 +784,7 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
         }
     }
 
-    for (uint8_t i = 0; i < MOTORS_NUM; i++)
-    {
-        portENTER_CRITICAL(&motor_spinlock);
-        motor_speed[i] = 0.0f;
-        portEXIT_CRITICAL(&motor_spinlock);
-    }
-
-    // initialize NVS
+    // init NVS
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND)
     {
@@ -839,7 +835,7 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
 
     // read calibration flag
     int8_t is_calibrated;
-    err = nvs_get_i8(zero_pos_handle, nvs_offset_key[6], &is_calibrated);
+    err = nvs_get_i8(zero_pos_handle, nvs_cal_flag_key, &is_calibrated);
     switch (err)
     {
         case ESP_OK:
@@ -862,7 +858,7 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
 
     // set new calibration flag
     is_calibrated = 0;
-    err = nvs_set_i8(zero_pos_handle, nvs_offset_key[6], is_calibrated);
+    err = nvs_set_i8(zero_pos_handle, nvs_cal_flag_key, is_calibrated);
     if (err != ESP_OK)
         ESP_LOGE(TAG, "Error (%s) setting NVS value!", esp_err_to_name(err));
 
@@ -888,6 +884,12 @@ void motor_deinit()
     vTaskDelay(UART_WAIT);
 
     nvs_close(zero_pos_handle);
+
+    for (uint8_t i = 0; i < MAX_POS_NUM; i++)
+        free(learn_joint_pos[i]);
+
+    free(learn_joint_pos);
+    learn_joint_pos = NULL;
 }
 
 
@@ -921,8 +923,6 @@ void motor_set_zero_pos(uint8_t DOF)
     err = nvs_commit(zero_pos_handle);
     if (err != ESP_OK)
         ESP_LOGE(TAG, "Error (%s) committing NVS!", esp_err_to_name(err));
-
-    vTaskDelay(100 / portTICK_PERIOD_MS);
 }
 
 
@@ -974,7 +974,7 @@ void motors_save_enc_states()
 
     // save calibration flag
     int8_t is_calibrated = 1;
-    err = nvs_set_i8(zero_pos_handle, nvs_offset_key[6], is_calibrated);
+    err = nvs_set_i8(zero_pos_handle, nvs_cal_flag_key, is_calibrated);
     if (err != ESP_OK)
         ESP_LOGE(TAG, "Error (%s) setting NVS value!", esp_err_to_name(err));
 
@@ -982,4 +982,97 @@ void motors_save_enc_states()
     err = nvs_commit(zero_pos_handle);
     if (err != ESP_OK)
         ESP_LOGE(TAG, "Error (%s) committing NVS!", esp_err_to_name(err));
+}
+
+
+/**
+ * @brief learn new position and add it to queue
+ * 
+ * @param max_speed maximal speed in rpm
+ * @param delay_ms delay after move end in ms
+*/
+void robot_learn_pos(float max_speed, uint32_t delay_ms)
+{
+    portENTER_CRITICAL(&motor_spinlock);
+    uint8_t pos_num = learn_pos_num;
+    portEXIT_CRITICAL(&motor_spinlock);
+
+    for (uint8_t i = 0; i < 6; i++)
+    {
+        portENTER_CRITICAL(&motor_spinlock);
+        learn_joint_pos[pos_num][i] = get_motor_pos(i);
+        portEXIT_CRITICAL(&motor_spinlock);
+    }
+
+    portENTER_CRITICAL(&motor_spinlock);
+    learn_joint_pos[pos_num][6] = max_speed;
+    learn_joint_pos[pos_num][7] = (float)delay_ms;
+    learn_pos_num++;
+    portEXIT_CRITICAL(&motor_spinlock);
+}
+
+
+/**
+ * @brief reset learned positions
+*/
+void robot_reset_learned_pos()
+{
+    portENTER_CRITICAL(&motor_spinlock);
+    learn_pos_num = 0;
+    portEXIT_CRITICAL(&motor_spinlock);
+}
+
+
+/**
+ * @brief move robot through learned position with axes interpolation
+ * 
+*/
+void robot_move_to_learned_pos()
+{
+    portENTER_CRITICAL(&motor_spinlock);
+    uint8_t pos_num = learn_pos_num;
+    portEXIT_CRITICAL(&motor_spinlock);
+
+    float joint_pos[MOTORS_NUM];
+    float start_pos[MOTORS_NUM];
+    float ax_rpm[MOTORS_NUM];
+    float max_speed = 0.0f;
+    uint32_t delay_ms = 0;
+
+    if (pos_num > 0)
+    {
+        for (uint8_t i = 0; i < pos_num; i++)
+        {
+            for (uint8_t j = 0; j < MOTORS_NUM; j++)
+            {
+                // get next position
+                portENTER_CRITICAL(&motor_spinlock);
+                joint_pos[j] = learn_joint_pos[i][j];
+                portEXIT_CRITICAL(&motor_spinlock);
+            }
+
+            // get max speed and delay
+            portENTER_CRITICAL(&motor_spinlock);
+            max_speed = learn_joint_pos[i][6];
+            delay_ms = (uint32_t)learn_joint_pos[i][7];
+            portEXIT_CRITICAL(&motor_spinlock);
+
+            // get start position
+            for (uint8_t j = 0; j < MOTORS_NUM; j++)
+                start_pos[j] = get_motor_pos(j);
+
+            // calculate speeds for each motor
+            axes_interpolation(max_speed, joint_pos, start_pos, ax_rpm);
+
+            // move to new position
+            for (uint8_t j = 0; j < MOTORS_NUM; j++)
+                single_DOF_move(j, joint_pos[j], ax_rpm[j], STEP_ACCEL);
+            wait_for_motors_stop();
+
+            // delay after move end
+            vTaskDelay(delay_ms / portTICK_PERIOD_MS);
+        }
+    }
+    else
+        ESP_LOGW(TAG, "no learned positions!");
 }

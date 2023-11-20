@@ -458,6 +458,187 @@ static void register_robot_get_pos()
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
 }
 
+
+// ====================================================================================================
+
+
+// struct for robot_learn_pos command arguments
+static struct {
+    struct arg_dbl* max_speed;
+    struct arg_int* delay_ms;
+    struct arg_end* end;
+} robot_learn_pos_args;
+
+
+/**
+ * @brief command for learning robot position
+ * 
+ * @param argc number of arguments
+ * @param argv array of arguments
+ * @return 0 - success, 1 - error
+ */
+static int cmd_robot_learn_pos(int argc, char** argv)
+{
+    int nerrors = arg_parse(argc, argv, (void**)&robot_learn_pos_args);
+    if (nerrors != 0)
+    {
+        arg_print_errors(stderr, robot_learn_pos_args.end, argv[0]);
+        return 1;
+    }
+
+    assert(robot_learn_pos_args.max_speed->count == 1);
+    assert(robot_learn_pos_args.delay_ms->count == 1);
+    const float max_speed = robot_learn_pos_args.max_speed->dval[0];
+    const uint32_t delay_ms = robot_learn_pos_args.delay_ms->ival[0];
+
+    if (max_speed < 0.0f)
+    {
+        printf("wrong speed!\n");
+        return 1;
+    }
+
+    printf("learning robot positions with speed %f and delay %lu ms ...\n", max_speed, delay_ms);
+
+    robot_learn_pos(max_speed, delay_ms);
+
+    printf("done!\n");
+
+    return 0;
+}
+
+
+/**
+ * @brief register robot_learn_pos command
+ * 
+ */
+static void register_robot_learn_pos()
+{
+    robot_learn_pos_args.max_speed = arg_dbl1(NULL, NULL, "<max_speed>", "max speed in RPM (float)");
+    robot_learn_pos_args.delay_ms = arg_int1(NULL, NULL, "<delay_ms>", "delay in ms (uint)");
+    robot_learn_pos_args.end = arg_end(3);
+
+    const esp_console_cmd_t cmd = {
+        .command = "robot_learn_pos",
+        .help = "Robot learn end effector position in degrees",
+        .hint = NULL,
+        .func = &cmd_robot_learn_pos,
+        .argtable = &robot_learn_pos_args
+    };
+
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+}
+
+
+// ====================================================================================================
+
+
+// struct for robot_reset_learned_pos command arguments
+static struct {
+    struct arg_end* end;
+} robot_reset_learned_pos_args;
+
+
+/**
+ * @brief command for reseting robot learned positions
+ * 
+ * @param argc number of arguments
+ * @param argv array of arguments
+ * @return 0 - success, 1 - error
+ */
+static int cmd_robot_reset_learned_pos(int argc, char** argv)
+{
+    int nerrors = arg_parse(argc, argv, (void**)&robot_reset_learned_pos_args);
+    if (nerrors != 0)
+    {
+        arg_print_errors(stderr, robot_reset_learned_pos_args.end, argv[0]);
+        return 1;
+    }
+
+    printf("reseting learned positions ...\n");
+
+    robot_reset_learned_pos();
+
+    printf("done!\n");
+
+    return 0;
+}
+
+
+/**
+ * @brief register robot_reset_learned_pos command
+ * 
+ */
+static void register_robot_reset_learned_pos()
+{
+    robot_reset_learned_pos_args.end = arg_end(1);
+
+    const esp_console_cmd_t cmd = {
+        .command = "robot_reset_learned_pos",
+        .help = "Reset robot learned end effector positions",
+        .hint = NULL,
+        .func = &cmd_robot_reset_learned_pos,
+        .argtable = &robot_reset_learned_pos_args
+    };
+
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+}
+
+
+// ====================================================================================================
+
+
+// struct for robot_move_to_learned_pos command arguments
+static struct {
+    struct arg_end* end;
+} robot_move_to_learned_pos_args;
+
+
+/**
+ * @brief command for moving robot through learned positions
+ * 
+ * @param argc number of arguments
+ * @param argv array of arguments
+ * @return 0 - success, 1 - error
+ */
+static int cmd_robot_move_to_learned_pos(int argc, char** argv)
+{
+    int nerrors = arg_parse(argc, argv, (void**)&robot_move_to_learned_pos_args);
+    if (nerrors != 0)
+    {
+        arg_print_errors(stderr, robot_move_to_learned_pos_args.end, argv[0]);
+        return 1;
+    }
+
+    printf("moving through learned positions ...\n");
+
+    robot_move_to_learned_pos();
+
+    printf("done!\n");
+
+    return 0;
+}
+
+
+/**
+ * @brief register robot_move_to_learned_pos command
+ * 
+ */
+static void register_robot_move_to_learned_pos()
+{
+    robot_move_to_learned_pos_args.end = arg_end(1);
+
+    const esp_console_cmd_t cmd = {
+        .command = "robot_move_to_learned_pos",
+        .help = "Move robot through learned end effector positions",
+        .hint = NULL,
+        .func = &cmd_robot_move_to_learned_pos,
+        .argtable = &robot_move_to_learned_pos_args
+    };
+
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+}
+
+
 // ====================================================================================================
 
 
@@ -584,6 +765,9 @@ void console_api_start()
     register_servo_set_zero_pos();
     register_robot_go_to_zero_pos();
     register_robot_get_pos();
+    register_robot_learn_pos();
+    register_robot_reset_learned_pos();
+    register_robot_move_to_learned_pos();
 
     // prompt to be printed before each line (this can be customized, made dynamic, etc.)
     const char* prompt = LOG_COLOR_I PROMPT_STR "> " LOG_RESET_COLOR;
