@@ -23,6 +23,7 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 
+// #define TEST_MODE                1 // uncomment to disable test mode
 #define STEP_MODE_ENABLE         1 // uncomment to enable step mode
 
 #define MOTORS_NUM               6 // number of motors

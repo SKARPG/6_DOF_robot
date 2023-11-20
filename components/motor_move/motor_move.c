@@ -846,8 +846,10 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
             if (is_calibrated == 0)
             {
                 ESP_LOGW(TAG, "Robot is not calibrated - set robot to zero position!");
+#ifdef TEST_MODE
                 for (uint8_t i = 0; i < MOTORS_NUM; i++)
                     motor_set_zero_pos(i);
+#endif // TEST_MODE
             }
             break;
         case ESP_ERR_NVS_NOT_FOUND:
