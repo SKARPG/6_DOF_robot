@@ -15,11 +15,11 @@
 // robot dimensions in mm
 #define DELTA0          77.5
 #define DELTA1          96.35
-#define L0              226.231
+#define L0              196.23
 #define DELTA2          83.594
-#define L1              192.487
-#define DELTA3          62.423
-#define DELTA4          62.427
+#define L1              192.5
+#define DELTA3          62.42
+#define DELTA4          62.43
 #define DELTA5          25.94
 
 // zero position in mm
