@@ -997,18 +997,25 @@ void robot_learn_pos(float max_speed, uint32_t delay_ms)
     uint8_t pos_num = learn_pos_num;
     portEXIT_CRITICAL(&motor_spinlock);
 
-    for (uint8_t i = 0; i < 6; i++)
+    if (pos_num < MAX_POS_NUM)
     {
+        for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        {
+            float pos = get_motor_pos(i);
+
+            portENTER_CRITICAL(&motor_spinlock);
+            learn_joint_pos[pos_num][i] = pos;
+            portEXIT_CRITICAL(&motor_spinlock);
+        }
+
         portENTER_CRITICAL(&motor_spinlock);
-        learn_joint_pos[pos_num][i] = get_motor_pos(i);
+        learn_joint_pos[pos_num][MOTORS_NUM] = max_speed;
+        learn_joint_pos[pos_num][MOTORS_NUM+1] = (float)delay_ms;
+        learn_pos_num++;
         portEXIT_CRITICAL(&motor_spinlock);
     }
-
-    portENTER_CRITICAL(&motor_spinlock);
-    learn_joint_pos[pos_num][6] = max_speed;
-    learn_joint_pos[pos_num][7] = (float)delay_ms;
-    learn_pos_num++;
-    portEXIT_CRITICAL(&motor_spinlock);
+    else
+        ESP_LOGW(TAG, "max number of learned positions reached!");
 }
 
 
@@ -1053,8 +1060,8 @@ void robot_move_to_learned_pos()
 
             // get max speed and delay
             portENTER_CRITICAL(&motor_spinlock);
-            max_speed = learn_joint_pos[i][6];
-            delay_ms = (uint32_t)learn_joint_pos[i][7];
+            max_speed = learn_joint_pos[i][MOTORS_NUM];
+            delay_ms = (uint32_t)learn_joint_pos[i][MOTORS_NUM+1];
             portEXIT_CRITICAL(&motor_spinlock);
 
             // get start position
