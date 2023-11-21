@@ -733,9 +733,10 @@ void robot_move_to_pos(float* desired_pos, float speed, uint8_t interpolation)
  */
 void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mks_config, linux_conf_t* linux_config)
 {
+    // allocate memory for learned positions
     learn_joint_pos = (float**)malloc(sizeof(float) * MAX_POS_NUM);
     for (uint8_t i = 0; i < MAX_POS_NUM; i++)
-        learn_joint_pos[i] = (float*)malloc(sizeof(float) * (MOTORS_NUM + 2));
+        learn_joint_pos[i] = (float*)malloc(sizeof(float) * (MOTORS_NUM + 3));
 
     // init queue
     rpm_queue = xQueueCreate(QUEUE_SIZE, sizeof(lin_int_queue_arg_t));
@@ -988,10 +989,11 @@ void motors_save_enc_states()
 /**
  * @brief learn new position and add it to queue
  * 
- * @param max_speed maximal speed in rpm
+ * @param max_speed maximal speed
  * @param delay_ms delay after move end in ms
+ * @param interpolation 0 - no interpolation [rpm], 1 - axes interpolation [rpm], 2 - linear interpolation [mm/s]
 */
-void robot_learn_pos(float max_speed, uint32_t delay_ms)
+void robot_learn_pos(float max_speed, uint32_t delay_ms, uint8_t interpolation)
 {
     portENTER_CRITICAL(&motor_spinlock);
     uint8_t pos_num = learn_pos_num;
@@ -1011,6 +1013,7 @@ void robot_learn_pos(float max_speed, uint32_t delay_ms)
         portENTER_CRITICAL(&motor_spinlock);
         learn_joint_pos[pos_num][MOTORS_NUM] = max_speed;
         learn_joint_pos[pos_num][MOTORS_NUM+1] = (float)delay_ms;
+        learn_joint_pos[pos_num][MOTORS_NUM+2] = (float)interpolation;
         learn_pos_num++;
         portEXIT_CRITICAL(&motor_spinlock);
     }
@@ -1031,7 +1034,7 @@ void robot_reset_learned_pos()
 
 
 /**
- * @brief move robot through learned position with axes interpolation
+ * @brief move robot through learned position with desired interpolation
  * 
 */
 void robot_move_to_learned_pos()
@@ -1045,6 +1048,7 @@ void robot_move_to_learned_pos()
     float ax_rpm[MOTORS_NUM];
     float max_speed = 0.0f;
     uint32_t delay_ms = 0;
+    uint8_t interpolation = 0;
 
     if (pos_num > 0)
     {
@@ -1062,19 +1066,61 @@ void robot_move_to_learned_pos()
             portENTER_CRITICAL(&motor_spinlock);
             max_speed = learn_joint_pos[i][MOTORS_NUM];
             delay_ms = (uint32_t)learn_joint_pos[i][MOTORS_NUM+1];
+            interpolation = (uint8_t)learn_joint_pos[i][MOTORS_NUM+2];
             portEXIT_CRITICAL(&motor_spinlock);
 
             // get start position
             for (uint8_t j = 0; j < MOTORS_NUM; j++)
                 start_pos[j] = get_motor_pos(j);
 
-            // calculate speeds for each motor
-            axes_interpolation(max_speed, joint_pos, start_pos, ax_rpm);
+            if (interpolation == 0) // no interpolation
+            {
+                // move to new position
+                for (uint8_t j = 0; j < MOTORS_NUM; j++)
+                    single_DOF_move(j, joint_pos[j], max_speed, STEP_ACCEL);
+                wait_for_motors_stop();
+            }
+            else if (interpolation == 1) // axes interpolation
+            {
+                // calculate speeds for each motor
+                axes_interpolation(max_speed, joint_pos, start_pos, ax_rpm);
 
-            // move to new position
-            for (uint8_t j = 0; j < MOTORS_NUM; j++)
-                single_DOF_move(j, joint_pos[j], ax_rpm[j], STEP_ACCEL);
-            wait_for_motors_stop();
+                // move to new position
+                for (uint8_t j = 0; j < MOTORS_NUM; j++)
+                    single_DOF_move(j, joint_pos[j], ax_rpm[j], STEP_ACCEL);
+                wait_for_motors_stop();
+            }
+            else if (interpolation == 2) // linear interpolation
+            {
+                float desired_pos[6];
+                calc_forw_kin(desired_pos, joint_pos);
+
+                lin_int_task_arg_t task_arg = {
+                    .max_speed = max_speed,
+                    .desired_pos = desired_pos,
+                    .joint_pos = joint_pos,
+                    .joint_start_pos = start_pos
+                };
+                xTaskCreate(lin_int_task, "linear interpolation task", 4096, (void*)&task_arg, 3, NULL);
+
+                lin_int_queue_arg_t queue_arg;
+
+                // linear interpolation
+                do
+                {
+                    if (xQueueReceive(rpm_queue, &queue_arg, portMAX_DELAY) == pdTRUE)
+                    {
+                        // move to new position
+                        for (uint8_t i = 0; i < MOTORS_NUM; i++)
+                            single_DOF_move(i, queue_arg.joint_pos[i], queue_arg.joint_rpm[i], 0.0f);
+
+                        wait_for_motors_stop();
+                    }
+                }
+                while (queue_arg.end_move == false);
+            }
+            else
+                ESP_LOGW(TAG, "invalid interpolation mode!");
 
             // delay after move end
             vTaskDelay(delay_ms / portTICK_PERIOD_MS);

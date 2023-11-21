@@ -466,6 +466,7 @@ static void register_robot_get_pos()
 static struct {
     struct arg_dbl* max_speed;
     struct arg_int* delay_ms;
+    struct arg_str* interpolation;
     struct arg_end* end;
 } robot_learn_pos_args;
 
@@ -488,8 +489,10 @@ static int cmd_robot_learn_pos(int argc, char** argv)
 
     assert(robot_learn_pos_args.max_speed->count == 1);
     assert(robot_learn_pos_args.delay_ms->count == 1);
+    assert(robot_learn_pos_args.interpolation->count == 1);
     const float max_speed = robot_learn_pos_args.max_speed->dval[0];
     const uint32_t delay_ms = robot_learn_pos_args.delay_ms->ival[0];
+    const char* interpolation = robot_learn_pos_args.interpolation->sval[0];
 
     if (max_speed < 0.0f)
     {
@@ -497,9 +500,28 @@ static int cmd_robot_learn_pos(int argc, char** argv)
         return 1;
     }
 
-    printf("learning robot positions with speed %f and delay %lu ms ...\n", max_speed, delay_ms);
+    if (interpolation[1] != '\0')
+    {
+        printf("wrong interpolation type!\n");
+        return 1;
+    }
 
-    robot_learn_pos(max_speed, delay_ms);
+    uint8_t inter = 0;
+    if (interpolation[0] == 'n')
+        inter = 0;
+    else if (interpolation[0] == 'a')
+        inter = 1;
+    else if (interpolation[0] == 'l')
+        inter = 2;
+    else
+    {
+        printf("wrong interpolation type!\n");
+        return 1;
+    }
+
+    printf("learning robot positions with speed %f and delay %lu ms with interpolation %s ...\n", max_speed, delay_ms, interpolation);
+
+    robot_learn_pos(max_speed, delay_ms, inter);
 
     printf("done!\n");
 
@@ -515,7 +537,8 @@ static void register_robot_learn_pos()
 {
     robot_learn_pos_args.max_speed = arg_dbl1(NULL, NULL, "<max_speed>", "max speed in RPM (float)");
     robot_learn_pos_args.delay_ms = arg_int1(NULL, NULL, "<delay_ms>", "delay in ms (uint)");
-    robot_learn_pos_args.end = arg_end(3);
+    robot_learn_pos_args.interpolation = arg_str1(NULL, NULL, "<inter>", "interpolation type (n|a|l)");
+    robot_learn_pos_args.end = arg_end(4);
 
     const esp_console_cmd_t cmd = {
         .command = "robot_learn_pos",

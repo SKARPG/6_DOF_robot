@@ -92,7 +92,7 @@ void motor_set_zero_pos(uint8_t DOF);
 
 void motors_save_enc_states();
 
-void robot_learn_pos(float max_speed, uint32_t delay_ms);
+void robot_learn_pos(float max_speed, uint32_t delay_ms, uint8_t interpolation);
 
 void robot_reset_learned_pos();
 

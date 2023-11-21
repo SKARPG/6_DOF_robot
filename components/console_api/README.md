@@ -10,7 +10,7 @@
     * `servo_set_zero_pos <DOF>` - sets current position of a servo as zero,
     * `robot_go_to_zero_pos <rpm>` - moves robot to zero position with a given speed in RPM,
     * `robot_get_pos` - gets robot's end effector position,
-    * `robot_learn_pos <max_speed> <delay_ms>` - learns robot end effector position in degrees with max speed [RPM] and delay after [ms],
+    * `robot_learn_pos <max_speed> <delay_ms> <inter>` - learns robot end effector position in degrees with speed, delay after [ms] and with given interpolation type (n - none [RPM], a - axes interpolation [RPM], l - linear interpolation [mm/s])
     * `robot_reset_learned_pos` - resets robot learned end effector positions,
     * `robot_move_to_learned_pos` - moves robot through learned end effector positions,
 * `ctrl + c` - exits the console.
