@@ -11,9 +11,7 @@
 #define UART_BAUD      115200
 #define TX_PIN         17
 #define RX_PIN         16
-#define RTS_PIN        15
-
-#define RPI_INTR_PIN   19
+#define RTS_PIN        4
 
 #define LINUX_UART_NUM UART_NUM_1
 #define LINUX_TX       21
@@ -32,9 +30,9 @@ void app_main(void)
         .baudrate = UART_BAUD
     };
 
-    gpio_num_t emm42_step_pin[] = {25, 26};
-    gpio_num_t emm42_dir_pin[] = {27, 5};
-    gpio_num_t emm42_en_pin[] = {0, 2};
+    gpio_num_t emm42_step_pin[] = {26, 14};
+    gpio_num_t emm42_dir_pin[] = {5, 19};
+    gpio_num_t emm42_en_pin[] = {13, 2};
 
     emm42_conf_t emm42_config = {
         .uart = UART_NUM,
@@ -47,9 +45,9 @@ void app_main(void)
         .en_pin = emm42_en_pin
     };
 
-    gpio_num_t mks_step_pin[] = {18};
-    gpio_num_t mks_dir_pin[] = {23};
-    gpio_num_t mks_en_pin[] = {4};
+    gpio_num_t mks_step_pin[] = {27};
+    gpio_num_t mks_dir_pin[] = {18};
+    gpio_num_t mks_en_pin[] = {12};
 
     mks_conf_t mks_config = {
         .uart = UART_NUM,
