@@ -20,6 +20,8 @@ static emm42_conf_t emm42_conf; // struct with emm42 servo parameters
 static mks_conf_t mks_conf; // struct with mks servo parameters
 static float motor_pos[MOTORS_NUM]; // array with current positions for each motor in degrees
 static float motor_pos_offset[MOTORS_NUM]; // array with saved motor position offsets in degrees
+static float motor_rpm[MOTORS_NUM]; // array with current speeds for each motor in rpm
+
 static float** learn_joint_pos; // pointer to array with learned joint positions in degrees
 static uint8_t learn_pos_num = 0; // number of learned positions
 
@@ -423,10 +425,21 @@ void wait_for_motors_stop()
                 break;
             }
         }
+
+        // resend move command to AX servos
+        for (uint8_t i = 3; i < MOTORS_NUM; i++)
+        {
+            portENTER_CRITICAL(&motor_spinlock);
+            float pos = motor_pos[i];
+            float rpm = motor_rpm[i];
+            portEXIT_CRITICAL(&motor_spinlock);
+
+            single_DOF_move(i, pos, rpm, STEP_ACCEL);
+        }
     }
 
     // prevent error accumulation
-    vTaskDelay(10 / portTICK_PERIOD_MS);
+    // vTaskDelay(10 / portTICK_PERIOD_MS);
 
     float cur_pos = 0.0f;
     for (uint32_t i = 0; i < MOTORS_NUM; i++)
@@ -454,6 +467,10 @@ void single_DOF_move(uint8_t DOF, float position, float rpm, float accel_phase)
     uint16_t AX_pos = 0;
 
     int16_t speed = 0;
+
+    portENTER_CRITICAL(&motor_spinlock);
+    motor_rpm[DOF] = rpm;
+    portEXIT_CRITICAL(&motor_spinlock);
 
 #ifndef STEP_MODE_ENABLE
 
