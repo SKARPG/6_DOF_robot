@@ -439,7 +439,7 @@ void wait_for_motors_stop()
     }
 
     // prevent error accumulation
-    // vTaskDelay(10 / portTICK_PERIOD_MS);
+    vTaskDelay(10 / portTICK_PERIOD_MS);
 
     float cur_pos = 0.0f;
     for (uint32_t i = 0; i < MOTORS_NUM; i++)
