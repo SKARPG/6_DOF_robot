@@ -47,8 +47,6 @@ static void linear_interpolation(float max_speed, float* desired_pos, float* cur
     // calculate path length
     float s = sqrt(pow((desired_pos[0] - cur_pos[0]), 2.0f) + pow((desired_pos[1] - cur_pos[1]), 2.0f) + pow((desired_pos[2] - cur_pos[2]), 2.0f)); // mm
 
-    // TODO: move with only degrees
-
     float t = s / max_speed; // mm/(mm/s) = s
 
     // find the longest path
@@ -61,6 +59,7 @@ static void linear_interpolation(float max_speed, float* desired_pos, float* cur
     }
 
     float max_rpm = (max_s / 360.0f) / (t / 60.0f); // (deg/360)/(s/60) = rev/min = rpm
+    printf("max_rpm: %f\n", max_rpm); // for debug
 
     // check for NaN
     if (isnan(max_rpm))
