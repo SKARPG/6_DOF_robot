@@ -67,6 +67,7 @@ void init_linux_pc(linux_conf_t* linux_config)
 
         vTaskDelay(1 / portTICK_PERIOD_MS);
     }
+    uart_flush(linux_conf.uart_port);
 
     init = INIT_KEY;
     uart_write_bytes(linux_conf.uart_port, (const char*)&init, sizeof(init));
@@ -150,6 +151,7 @@ void calc_inv_kin(float* desired_pos, float* joint_pos)
         if (rd_len != sizeof(r_joint_pos[i]))
             ESP_LOGE(TAG, "uart_read_bytes() error");
     }
+    uart_flush(linux_conf.uart_port);
 
     for (uint8_t i = 0; i < 6; i++)
         joint_pos[i] = (float)((double)((int64_t)r_joint_pos[i][0] << 56 | (int64_t)r_joint_pos[i][1] << 48 |
@@ -174,7 +176,7 @@ void calc_forw_kin(float* cur_pos, float* joint_pos)
 {
     double angle[6];
     for (uint8_t i = 0; i < 6; i++)
-        angle[i] = (double)deg2rad(joint_pos[i]);
+        angle[i] = deg2rad((double)joint_pos[i]);
 
     cur_pos[0] = (float)(DELTA2*sin(angle[0]) - DELTA1*sin(angle[0]) - DELTA3*sin(angle[0]) + L0*cos(angle[0])*sin(angle[1]) - DELTA5*cos(angle[4])*sin(angle[0]) - L1*cos(angle[0])*cos(angle[1])*sin(angle[2]) + L1*cos(angle[0])*cos(angle[2])*sin(angle[1]) + DELTA4*cos(angle[0])*cos(angle[1])*cos(angle[2])*sin(angle[3]) - DELTA4*cos(angle[0])*cos(angle[1])*cos(angle[3])*sin(angle[2]) + DELTA4*cos(angle[0])*cos(angle[2])*cos(angle[3])*sin(angle[1]) + DELTA4*cos(angle[0])*sin(angle[1])*sin(angle[2])*sin(angle[3]) - DELTA5*cos(angle[0])*cos(angle[1])*sin(angle[2])*sin(angle[3])*sin(angle[4]) + DELTA5*cos(angle[0])*cos(angle[2])*sin(angle[1])*sin(angle[3])*sin(angle[4]) - DELTA5*cos(angle[0])*cos(angle[3])*sin(angle[1])*sin(angle[2])*sin(angle[4]) - DELTA5*cos(angle[0])*cos(angle[1])*cos(angle[2])*cos(angle[3])*sin(angle[4]));
 
@@ -199,5 +201,5 @@ void calc_forw_kin(float* cur_pos, float* joint_pos)
 
     // convert radians to degrees
     for (uint8_t i = 3; i < 6; i++)
-        cur_pos[i] = rad2deg(cur_pos[i]);
+        cur_pos[i] = (float)rad2deg((double)cur_pos[i]);
 }

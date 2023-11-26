@@ -47,25 +47,34 @@ static void linear_interpolation(float max_speed, float* desired_pos, float* cur
     // calculate path length
     float s = sqrt(pow((desired_pos[0] - cur_pos[0]), 2.0f) + pow((desired_pos[1] - cur_pos[1]), 2.0f) + pow((desired_pos[2] - cur_pos[2]), 2.0f)); // mm
 
-    float t = s / max_speed; // mm/(mm/s) = s
-
-    // find the longest path
-    float max_s = 0.0f;
-
-    for (uint8_t i = 0; i < 6; i++)
+    if (max_speed == 0.0f || s == 0.0f)
     {
-        if (fabs(joint_pos[i] - joint_start_pos[i]) > max_s)
-            max_s = fabs(joint_pos[i] - joint_start_pos[i]); // deg
+        for (uint8_t i = 0; i < 6; i++)
+            lin_rpm[i] = 0.0f;
     }
+    else
+    {
+        float t = s / max_speed; // mm/(mm/s) = s
 
-    float max_rpm = (max_s / 360.0f) / (t / 60.0f); // (deg/360)/(s/60) = rev/min = rpm
-    printf("max_rpm: %f\n", max_rpm); // for debug
+        // find the longest path
+        float max_s = 0.0f;
 
-    // check for NaN
-    if (isnan(max_rpm))
-        max_rpm = 2.0f;
+        for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        {
+            if (fabs(joint_pos[i] - joint_start_pos[i]) > max_s)
+                max_s = fabs(joint_pos[i] - joint_start_pos[i]); // deg
+        }
 
-    axes_interpolation(max_rpm, joint_pos, joint_start_pos, lin_rpm);
+        float max_rpm = max_s / (t * 6.0f); // (deg/360)/(s/60) = rev/min = rpm
+
+        if (max_s == 0.0f)
+        {
+            for (uint8_t i = 0; i < MOTORS_NUM; i++)
+                lin_rpm[i] = 1.0f; // prevent motors locking
+        }
+        else
+            axes_interpolation(max_rpm, joint_pos, joint_start_pos, lin_rpm);
+    }
 }
 
 
@@ -131,7 +140,7 @@ static void lin_int_task(void* pvParameters)
         linear_interpolation(arg->max_speed, arg->desired_pos, cur_pos, arg->joint_pos, arg->joint_start_pos, joint_rpm);
 
         // move to new position
-        for (uint8_t i = 0; i < 6; i++)
+        for (uint8_t i = 0; i < MOTORS_NUM; i++)
         {
             queue_arg.joint_pos[i] = arg->joint_pos[i];
             queue_arg.joint_rpm[i] = joint_rpm[i];
@@ -142,7 +151,7 @@ static void lin_int_task(void* pvParameters)
         xQueueSend(rpm_queue, &queue_arg, portMAX_DELAY);
 
         // set new current position
-        for (uint8_t i = 0; i < 6; i++)
+        for (uint8_t i = 0; i < MOTORS_NUM; i++)
         {
             cur_pos[i] = arg->desired_pos[i];
             arg->joint_start_pos[i] = arg->joint_pos[i];
@@ -177,14 +186,18 @@ static uint64_t calc_period_us(float rpm)
     if (period_us < (uint64_t)(1.0f / (AX_MAX_RPM * (float)FULL_ROT * GEAR_RATIO / (60.0f * 1000000.0f))))
     {
         period_us = (uint64_t)(1.0f / (AX_MAX_RPM * (float)FULL_ROT * GEAR_RATIO / (60.0f * 1000000.0f)));
+#ifdef DEBUG_MODE
         ESP_LOGW(TAG, "calc_period_us: too high speed!");
+#endif // DEBUG_MODE
     }
 
     // prevent locking engines at too low speeds
     if (period_us > (uint64_t)(1.0f / (AX_MIN_RPM * (float)FULL_ROT * GEAR_RATIO / (60.0f * 1000000.0f))))
     {
         period_us = (uint64_t)(1.0f / (AX_MIN_RPM * (float)FULL_ROT * GEAR_RATIO / (60.0f * 1000000.0f)));
+#ifdef DEBUG_MODE
         ESP_LOGW(TAG, "calc_period_us: too too low speed!");
+#endif // DEBUG_MODE
     }
 
     return period_us;
@@ -211,8 +224,10 @@ static int16_t calc_speed(uint8_t DOF, float rpm, float accel_phase)
             speed = (int16_t)(rpm / EMM42_MAX_RPM * 1279.0f);
             if (speed > 1279)
             {
-                ESP_LOGW(TAG, "emm42 servo: too high speed!");
                 speed = 1279;
+#ifdef DEBUG_MODE
+                ESP_LOGW(TAG, "emm42 servo: too high speed!");
+#endif // DEBUG_MODE
             }
         }
         else if (DOF == 1)
@@ -220,8 +235,10 @@ static int16_t calc_speed(uint8_t DOF, float rpm, float accel_phase)
             speed = (int16_t)(rpm / MKS_MAX_RPM * 1279.0f);
             if (speed > 1279)
             {
-                ESP_LOGW(TAG, "mks servo: too high speed!");
                 speed = 1279;
+#ifdef DEBUG_MODE
+                ESP_LOGW(TAG, "mks servo: too high speed!");
+#endif // DEBUG_MODE
             }
         }
         else if (DOF == 3 || DOF == 4 || DOF == 5)
@@ -234,8 +251,10 @@ static int16_t calc_speed(uint8_t DOF, float rpm, float accel_phase)
             speed = (int16_t)(rpm / AX_MAX_RPM * 1023.0f);
             if (speed > 1023)
             {
-                ESP_LOGW(TAG, "AX servo: too high speed!");
                 speed = 1023;
+#ifdef DEBUG_MODE
+                ESP_LOGW(TAG, "AX servo: too high speed!");
+#endif // DEBUG_MODE
             }
         }
         else
@@ -307,19 +326,23 @@ void axes_interpolation(float max_rpm, float* joint_pos, float* joint_start_pos,
         }
     }
 
-    ax_rpm[max_i] = max_rpm;
-
-    // v=s/t => t=s/v
-    float t = max_s / max_rpm; // deg/(rev/min) = min*deg/rev
-
-    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+    if (max_rpm == 0.0f || max_s == 0.0f)
     {
-        if (i != max_i)
-            ax_rpm[i] = fabs(joint_pos[i] - joint_start_pos[i]) / t; // deg/(min*deg/rev) = rev/min = rpm
+        for (uint8_t i = 0; i < MOTORS_NUM; i++)
+            ax_rpm[i] = 0.0f;
+    }
+    else
+    {
+        ax_rpm[max_i] = max_rpm;
 
-        // check for NaN
-        if (isnan(ax_rpm[i]))
-            ax_rpm[i] = 2.0f;
+        // v=s/t => t=s/v
+        float t = max_s / max_rpm; // deg/(rev/min) = min*deg/rev
+
+        for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        {
+            if (i != max_i)
+                ax_rpm[i] = fabs(joint_pos[i] - joint_start_pos[i]) / t; // deg/(min*deg/rev) = rev/min = rpm
+        }
     }
 }
 
@@ -859,7 +882,7 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
             if (is_calibrated == 0)
             {
                 ESP_LOGW(TAG, "Robot is not calibrated - set robot to zero position!");
-#ifdef TEST_MODE
+#ifndef TEST_MODE
                 for (uint8_t i = 0; i < MOTORS_NUM; i++)
                     motor_set_zero_pos(i);
 #endif // TEST_MODE
