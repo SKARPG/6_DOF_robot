@@ -6,6 +6,7 @@ In order to add additional components to project open new `Bash` terminal in the
 ```bash
 cd components
 git clone https://github.com/JanG175/6_DOF_robot.git
+cd 6_DOF_robot
 git submodule init
 git submodule update
 ```
