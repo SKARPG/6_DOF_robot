@@ -1,0 +1,10 @@
+[submodule "components/mks_servo"]
+	path = components/mks_servo
+	url = git@github.com:JanG175/mks_servo.git
+[submodule "components/emm42_servo"]
+	path = components/emm42_servo
+	url = git@github.com:JanG175/emm42_servo.git
+[submodule "components/AX_servo"]
+	path = components/AX_servo
+	url = git@github.com:JanG175/AX_servo.git
+	branch = manual_rts

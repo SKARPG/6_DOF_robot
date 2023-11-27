@@ -5,11 +5,9 @@ In order to add additional components to project open new `Bash` terminal in the
 
 ```bash
 cd components
-git clone https://github.com/JanG175/mks_servo.git
-git clone https://github.com/JanG175/emm42_servo.git
-git clone https://github.com/JanG175/AX_servo.git
-cd AX_servo
-git checkout manual_rts
+git clone https://github.com/JanG175/6_DOF_robot.git
+git submodule init
+git submodule update
 ```
 
 ## Configure SDK
