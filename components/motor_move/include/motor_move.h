@@ -13,15 +13,13 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
-#include "driver/gpio.h"
-#include "driver/uart.h"
 #include "esp_log.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 #include "AX_servo.h"
 #include "mks_servo.h"
 #include "emm42_servo.h"
 #include "inv_kin.h"
-#include "nvs.h"
-#include "nvs_flash.h"
 
 #define TEST_MODE                1 // uncomment to enable test mode
 // #define DEBUG_MODE               1 // uncomment to enable debug mode
