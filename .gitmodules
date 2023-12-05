@@ -10,3 +10,6 @@
 	path = components/AX_servo
 	url = git@github.com:JanG175/AX_servo.git
 	branch = manual_rts
+[submodule "inv_kin_solv"]
+	path = inv_kin_solv
+	url = git@github.com:JanG175/inv_kin_solv.git
