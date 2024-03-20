@@ -793,7 +793,7 @@ void motor_init(AX_conf_t* AX_config, emm42_conf_t* emm42_config, mks_conf_t* mk
     mks_servo_init(mks_conf);
     AX_servo_init(AX_conf);
 
-    init_linux_pc(linux_config);
+    // init_linux_pc(linux_config);
 
     vTaskDelay(UART_WAIT);
 

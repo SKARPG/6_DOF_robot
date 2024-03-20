@@ -20,6 +20,25 @@
 static const char *TAG = "main";
 
 
+void presentation_move(float* des_joint_pos, float* cur_joint_pos, float max_rpm) 
+{
+    float ax_rpm[MOTORS_NUM];
+    axes_interpolation(max_rpm, des_joint_pos, cur_joint_pos, ax_rpm);
+
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+    {
+        if (ax_rpm[i] <= 0.0f)
+            ax_rpm[i] = 5.0f;
+
+        single_DOF_move(i, des_joint_pos[i], ax_rpm[i], STEP_ACCEL);
+    }
+    wait_for_motors_stop();
+
+    for (uint8_t i = 0; i < MOTORS_NUM; i++)
+        cur_joint_pos[i] = des_joint_pos[i];
+}
+
+
 void app_main(void)
 {
     AX_conf_t AX_config = {
@@ -70,13 +89,94 @@ void app_main(void)
 
     float rpm = 2.0f;
 
+    ESP_LOGI(TAG, "Motor test");
+
     // go to zero position
     for (uint8_t i = 0; i < MOTORS_NUM; i++)
         single_DOF_move(i, 0.0f, rpm, STEP_ACCEL);
     wait_for_motors_stop();
 
     // start console
-    console_api_start();
+    // console_api_start();
+
+    float max_rpm = 5.0f;
+    float cur_joint_pos[MOTORS_NUM] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    float des_joint_pos[MOTORS_NUM];
+
+    while (1)
+    {
+        des_joint_pos[0] = 30.0f;
+        des_joint_pos[1] = -30.0f;
+        des_joint_pos[2] = -90.0f;
+        des_joint_pos[3] = -45.0f;
+        des_joint_pos[4] = 30.0f;
+        des_joint_pos[5] = 30.0f;
+        presentation_move(des_joint_pos, cur_joint_pos, max_rpm);
+        vTaskDelay(20000 / portTICK_PERIOD_MS);
+
+        des_joint_pos[0] = 0.0f;
+        des_joint_pos[1] = 0.0f;
+        des_joint_pos[2] = 0.0f;
+        des_joint_pos[3] = 0.0f;
+        des_joint_pos[4] = 0.0f;
+        des_joint_pos[5] = 0.0f;
+        presentation_move(des_joint_pos, cur_joint_pos, max_rpm);
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
+
+        des_joint_pos[0] = -45.0f;
+        des_joint_pos[1] = 50.0f;
+        des_joint_pos[2] = 110.0f;
+        des_joint_pos[3] = -80.0f;
+        des_joint_pos[4] = -40.0f;
+        des_joint_pos[5] = -40.0f;
+        presentation_move(des_joint_pos, cur_joint_pos, max_rpm);
+        vTaskDelay(20000 / portTICK_PERIOD_MS);
+
+        des_joint_pos[0] = 0.0f;
+        des_joint_pos[1] = 0.0f;
+        des_joint_pos[2] = 0.0f;
+        des_joint_pos[3] = 0.0f;
+        des_joint_pos[4] = 0.0f;
+        des_joint_pos[5] = 0.0f;
+        presentation_move(des_joint_pos, cur_joint_pos, max_rpm);
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
+
+        des_joint_pos[0] = -30.0f;
+        des_joint_pos[1] = -40.0f;
+        des_joint_pos[2] = -90.0f;
+        des_joint_pos[3] = -45.0f;
+        des_joint_pos[4] = -30.0f;
+        des_joint_pos[5] = -30.0f;
+        presentation_move(des_joint_pos, cur_joint_pos, max_rpm);
+        vTaskDelay(20000 / portTICK_PERIOD_MS);
+
+        des_joint_pos[0] = 0.0f;
+        des_joint_pos[1] = 0.0f;
+        des_joint_pos[2] = 0.0f;
+        des_joint_pos[3] = 0.0f;
+        des_joint_pos[4] = 0.0f;
+        des_joint_pos[5] = 0.0f;
+        presentation_move(des_joint_pos, cur_joint_pos, max_rpm);
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
+
+        des_joint_pos[0] = 45.0f;
+        des_joint_pos[1] = 50.0f;
+        des_joint_pos[2] = 100.0f;
+        des_joint_pos[3] = -30.0f;
+        des_joint_pos[4] = 60.0f;
+        des_joint_pos[5] = 40.0f;
+        presentation_move(des_joint_pos, cur_joint_pos, max_rpm);
+        vTaskDelay(20000 / portTICK_PERIOD_MS);
+
+        des_joint_pos[0] = 0.0f;
+        des_joint_pos[1] = 0.0f;
+        des_joint_pos[2] = 0.0f;
+        des_joint_pos[3] = 0.0f;
+        des_joint_pos[4] = 0.0f;
+        des_joint_pos[5] = 0.0f;
+        presentation_move(des_joint_pos, cur_joint_pos, max_rpm);
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
+    }
 
     // save encoders position before power off
     motors_save_enc_states();
