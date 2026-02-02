@@ -1,5 +1,7 @@
 # 6-DOF robot main program
 
+![Robotic arm](README_images/robot_arm.png)
+
 ## Add custom components
 In order to add additional components to project open new `Bash` terminal in the project directory and run following commands:
 
@@ -42,7 +44,7 @@ cmake --build .
 ./inv_kin_solv
 ```
 
-To start the program first connect ESP32 UART ports via USB converter (`/dev/ttyUSB0`)and then connect ESP32 itself via USB (/dev/ttyUSB1) to Linux PC and open `Bash` terminal and follow these commands:
+To start the program first connect ESP32 UART ports via USB converter (`/dev/ttyUSB0`) and then connect ESP32 itself via USB (/dev/ttyUSB1) to Linux PC and open `Bash` terminal and follow these commands:
 ```bash
 cd ~/Desktop/inv_kin_solv
 bash start_inv_kin.sh
